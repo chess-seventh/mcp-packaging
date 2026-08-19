@@ -153,9 +153,13 @@ Said out loud rather than left for a consumer to discover:
   (`packagesNeedingBuildSystems`). `examples/example-mcp` never met it because it
   resolves as a uv **workspace** member, which is not a route any other
   repository can take — so the export stays proven by the example, and the input
-  path is now proven by a second repository building against this flake over the
-  network. That repository is deliberately not named here — the naming rule below
-  is the reason, and it applies to this bullet as much as to any other line.
+  path was walked by a second repository building against this flake over the
+  network, once, by hand. **Nothing here keeps that true**, and this bullet says
+  so rather than borrowing the confidence of the checks around it: no check in
+  this repository can fetch itself as an external consumer. What `nix flake check` does hold is `build-system-hook`, which asserts the published argument
+  reaches the package it names — the mechanism, not the round trip. That
+  repository is deliberately not named here; the naming rule below is the
+  reason, and it applies to this bullet as much as to any other line.
 - The **`stateDocument` branch** of the service and deployment checks — restart
   survival, power-cut survival, and the unwritable-store node — is neither run
   nor **evaluated** here, because the example consumer persists nothing and Nix

@@ -53,8 +53,9 @@
   # hatchling; so no argument the published API offered could build the layer
   # from outside its own tree. Found by the first external consumer to take the
   # input (L185); it is not named here, because the naming rule in the README
-  # applies to a comment exactly as it does to prose. A list of names cannot say WHICH build system, so the shape had to
-  # change and not only the default.
+  # applies to a comment exactly as it does to prose. A list of names cannot
+  # say WHICH build system, so the shape had to change and not only the
+  # default.
   #
   # The old argument had no call site anywhere - not in this flake, not in the
   # example consumer, not in any consuming repository - so it is replaced rather
@@ -135,7 +136,13 @@ in
 pkgs.runCommand "${distributionName}-${versionOf distributionName}"
   {
     inherit meta;
-    passthru = { inherit serverEnvironment; };
+    # ⚠ `pythonSet` IS EXPOSED SO THE WIRING CAN BE CHECKED, not as a general
+    # extension point. `checks.build-system-hook` reads a package back out of it
+    # and asserts the caller's build system actually landed on that package -
+    # which is the one thing testing the overlay in isolation cannot tell you.
+    # Sever the import two dozen lines above and every check in this repository
+    # still passed, until this line existed.
+    passthru = { inherit serverEnvironment pythonSet; };
   }
   ''
     set -euo pipefail

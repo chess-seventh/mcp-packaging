@@ -21,6 +21,19 @@
 {
   pkgs,
   lib,
+
+  # The flake's own `lib` output, so what is exercised is what a CONSUMER gets.
+  # ⚠ IT IS HERE BECAUSE THE OVERLAY ALONE WAS NOT ENOUGH, and the gap was the
+  # lane's own defect wearing a different hat: this check imported
+  # `../lib/buildFixes.nix` directly, so the ONE line joining the published
+  # argument to it went untested. Severed by hand, every check in this
+  # repository still passed. A `packagesNeedingBuildSystems` that silently did
+  # nothing would have shipped green.
+  api,
+
+  # This repository's own root, used as a workspace with a real lock file. The
+  # wiring claim needs a package that genuinely exists in one.
+  workspaceRoot,
 }:
 let
   # A build system this repository does not use and does not default to. If the
@@ -75,13 +88,50 @@ let
       saw = builtins.toString (builtins.length fixedInputs);
     }
     {
+      # Indexing 0 and 1 above is only meaningful if there are exactly two. A
+      # double-append would satisfy both of those claims and this one refuses it.
+      name = "the fix is appended once, not twice";
+      holds = builtins.length fixedInputs == 2;
+      saw = builtins.toString (builtins.length fixedInputs);
+    }
+    {
       # THE CLAIM THE WHOLE FILE IS FOR. Not "a build system arrived" - the
       # caller's OWN spec arrived, unread and unrewritten.
       name = "the caller's spec reaches resolveBuildSystem verbatim";
       holds = (builtins.elemAt fixedInputs 1).resolvedFrom == neitherSetuptoolsNorHatchling;
       saw = builtins.toString (builtins.attrNames (builtins.elemAt fixedInputs 1).resolvedFrom);
     }
+    {
+      # THE WIRING, WHICH THE THREE CLAIMS ABOVE CANNOT SEE. They exercise the
+      # overlay; this one goes in through the published argument on the real
+      # factory, against this repository's own lock, and reads the build system
+      # back off the package it was asked to fix. Evaluation only - nothing is
+      # built, and the package chosen is one that already resolves.
+      name = "the published argument reaches the package it names";
+      holds = builtins.all (drv: builtins.elem drv wiredInputs) expectedBuildSystem;
+      saw = builtins.toString (map (drv: drv.name or "?") wiredInputs);
+    }
   ];
+
+  # A package that genuinely exists in this repository's lock. Which one does not
+  # matter - what matters is that the factory is entered the way a consumer
+  # enters it, with a build system nothing here would otherwise apply.
+  wiredPackageName = "anyio";
+
+  wired = api.mkServerPackage {
+    inherit pkgs workspaceRoot;
+    distributionName = "mcp-packaging";
+    consoleScriptName = "unbuilt";
+    entryPoint = "unbuilt:main";
+    meta = { };
+    packagesNeedingBuildSystems = {
+      ${wiredPackageName} = neitherSetuptoolsNorHatchling;
+    };
+  };
+
+  wiredSet = wired.passthru.pythonSet;
+  wiredInputs = wiredSet.${wiredPackageName}.nativeBuildInputs;
+  expectedBuildSystem = wiredSet.resolveBuildSystem neitherSetuptoolsNorHatchling;
 
   broken = builtins.filter (claim: !claim.holds) claims;
 in

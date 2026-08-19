@@ -241,6 +241,8 @@
           build-system-hook = import ./nix/checks/build-system-hook.nix {
             inherit pkgs;
             inherit (pkgs) lib;
+            api = mcpPackagingLib;
+            workspaceRoot = ./.;
           };
 
           # The Python half, run from the same lock the package is built from.
