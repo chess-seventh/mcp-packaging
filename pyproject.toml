@@ -88,12 +88,7 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
-# ⚠ A UV WORKSPACE, so the example consumer resolves against THIS source tree
-# rather than against a published wheel. That is what makes the example a real
-# proof: it depends on the layer as a consumer does, and one `uv.lock` decides
-# the versions both halves are built from.
-[tool.uv.workspace]
-members = ["examples/example-mcp"]
+[tool.ty]
 
 [tool.ty.environment]
 python = ".devenv/state/venv/bin/python"
@@ -104,3 +99,10 @@ possibly-missing-attribute = "error"
 possibly-missing-import = "error"
 redundant-cast = "warn"
 unused-ignore-comment = "warn"
+
+# ⚠ A UV WORKSPACE, so the example consumer resolves against THIS source tree
+# rather than against a published wheel. That is what makes the example a real
+# proof: it depends on the layer as a consumer does, and one `uv.lock` decides
+# the versions both halves are built from.
+[tool.uv.workspace]
+members = ["examples/example-mcp"]

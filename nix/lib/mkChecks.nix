@@ -37,16 +37,37 @@
 {
   # Readiness, bind exclusivity, state-area modes, restart policy, start-limit,
   # and the credentials refusal. A NixOS virtual-machine test.
-  service = import ../checks/service.nix { inherit pkgs lib spec serverPackage; };
+  service = import ../checks/service.nix {
+    inherit
+      pkgs
+      lib
+      spec
+      serverPackage
+      ;
+  };
 
   # What only a whole machine can answer: a power cut, a port somebody else
   # holds, a store that will not take a write, and TWO of these services on one
   # box built from one factory and two specs. A virtual-machine test.
-  deployment = import ../checks/deployment.nix { inherit pkgs lib spec serverPackage; };
+  deployment = import ../checks/deployment.nix {
+    inherit
+      pkgs
+      lib
+      spec
+      serverPackage
+      ;
+  };
 
   # The tightening set, read back off the RUNNING unit and compared whole. A
   # virtual-machine test.
-  hardening = import ../checks/hardening.nix { inherit pkgs lib spec serverPackage; };
+  hardening = import ../checks/hardening.nix {
+    inherit
+      pkgs
+      lib
+      spec
+      serverPackage
+      ;
+  };
 
   # The headline gate: a real system closure, built with the service enabled and
   # its secrets supplied by file, then searched for every secret's value.

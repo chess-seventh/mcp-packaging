@@ -159,9 +159,7 @@ def test_the_comparison_is_still_hmac_compare_digest() -> None:
     comparisons = [
         node
         for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "compare_digest"
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "compare_digest"
     ]
     assert len(comparisons) == 1, "the module must compare exactly once, with hmac.compare_digest"
 

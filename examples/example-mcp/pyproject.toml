@@ -25,4 +25,4 @@ version = "0.1.0"
 example-mcp-server = "example_mcp.entrypoint:main"
 
 [tool.uv.sources]
-mcp-packaging = { workspace = true }
+mcp-packaging = {workspace = true}

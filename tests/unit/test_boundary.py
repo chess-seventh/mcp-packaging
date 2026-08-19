@@ -122,11 +122,7 @@ def test_no_module_reads_an_environment_variable(source: pathlib.Path) -> None:
     is precisely what makes it the likeliest breach.
     """
     tree = ast.parse(source.read_text())
-    reads = [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Attribute) and node.attr in {"environ", "getenv"}
-    ]
+    reads = [node for node in ast.walk(tree) if isinstance(node, ast.Attribute) and node.attr in {"environ", "getenv"}]
     assert reads == [], f"{source.name} reads the environment; only a consumer's composition root may"
 
 

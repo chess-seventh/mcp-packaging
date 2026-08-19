@@ -35,7 +35,7 @@ def test_a_plain_assignment_is_read() -> None:
         ("# a comment\nNAME=value", {"NAME": "value"}),
         ("\n\nNAME=value\n\n", {"NAME": "value"}),
         ("NAME=a=b=c", {"NAME": "a=b=c"}),
-        ("NAME=\"unbalanced", {"NAME": '"unbalanced'}),
+        ('NAME="unbalanced', {"NAME": '"unbalanced'}),
         ("A=1\nB=2", {"A": "1", "B": "2"}),
     ],
 )
@@ -51,7 +51,7 @@ def test_the_shapes_a_rendered_or_hand_written_file_really_carries(text: str, ex
 
 @pytest.mark.contract_shape_pure_function
 def test_a_key_with_an_empty_value_is_kept_rather_than_dropped() -> None:
-    """"Present but empty" and "absent" are materially different, and only
+    """ "Present but empty" and "absent" are materially different, and only
     `require` may collapse them. A parser that dropped the blank would make the
     realistic template typo indistinguishable from a missing line."""
     assert parse("NAME=") == {"NAME": ""}

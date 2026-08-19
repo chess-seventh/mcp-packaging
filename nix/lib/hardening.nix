@@ -216,7 +216,8 @@ let
   };
 
   applied = builtins.attrNames serviceConfig;
-  readable = posture.booleanDirectives ++ builtins.attrNames posture.stringDirectives ++ posture.notTightenings;
+  readable =
+    posture.booleanDirectives ++ builtins.attrNames posture.stringDirectives ++ posture.notTightenings;
 
   without = names: from: builtins.filter (name: !(builtins.elem name from)) names;
 

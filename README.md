@@ -1,2 +1,151 @@
 # mcp-packaging
-Shared Nix + Python packaging layer for the fleet's MCP servers
+
+The shared packaging layer for a fleet of MCP servers: the Python components and
+the Nix factories that turn one server into a **build output**, a **hardened
+NixOS service**, and a **set of checks that can fail**.
+
+It is deliberately small and deliberately ignorant. It knows about MCP servers,
+sockets, headers, systemd units, Nix derivations and filesystem modes. It knows
+nothing about any integration, nor about the data one holds.
+
+> **If a domain concept ever needs to enter this layer, that is the signal the
+> abstraction is wrong, not a reason to widen it.**
+
+That single rule is enforced rather than asserted — see [The boundary, and what
+holds it](#the-boundary-and-what-holds-it).
+
+## Why it is public
+
+A private flake input is unfetchable on the fleet this serves: `access-tokens` is
+empty, a private reference returns HTTP 404, and there is no SSH key. A private
+shared layer would be a shared layer nobody could consume.
+
+Publishing is only defensible because nothing here belongs to any operator — no
+secret, no port allocation, no host, no health data. Every credential-shaped
+string in the tree is a `SYNTHETIC-` prefixed fixture that exists to be searched
+*for*, and `nix/lib/fixtures.nix` refuses at evaluation any that is not.
+
+## What a consumer gets
+
+```nix
+{
+  inputs.mcp-packaging.url = "github:chess-seventh/mcp-packaging";
+}
+```
+
+One input line. `pyproject-nix`, `uv2nix` and `pyproject-build-systems` are
+carried here, so a consumer does not declare them or keep their `follows` in
+agreement with this repository's.
+
+| Export | What it is |
+|---|---|
+| `lib.mkServerPackage` | A closed Python environment resolved from the consumer's own `uv.lock`, with the installed console script **asserted at build time** to route through the one declared entry point. |
+| `lib.mkServiceModule` | A NixOS module factory. Produces a hardened unit on a fixed account, taking credentials from a runtime file and never from a Nix option value. |
+| `lib.mkSessionProbe` | A caller that opens a **real** MCP session, requires a session id, and reads every expected tool back by name. It refuses to be satisfied by an HTTP response. |
+| `lib.mkChecks` | All four checks from one call — service, deployment, hardening, and the closure secret search. |
+| `lib.hardening` | The tightening set as data: `serviceConfig` (what is applied) and `posture` (what must be applied). |
+| `lib.mkFixtures` | The synthetic credentials builder, for a consumer writing a check of its own. |
+
+Every factory takes the consumer's own `pkgs`, so none of them is per-system.
+
+The full parameter surface is [`docs/api.md`](docs/api.md). The shape of a
+consumer is [`examples/example-mcp`](examples/example-mcp/README.md), and it is
+built and checked here on every run rather than described.
+
+## One `serviceSpec`, read by every factory
+
+A consumer writes **one** record and passes the same object to all three
+factories, which read what they need and ignore the rest. That is what reduces
+what a new consumer must get right from about forty arguments to one object, and
+what makes a field added for a fourth consumer change no call site.
+
+```nix
+serviceSpec = rec {
+  name = "example-mcp";
+  optionPath = [ "services" "example-mcp" ];
+  consoleScriptName = "example-mcp-server";
+  entryPoint = "example_mcp.entrypoint:main";
+  sharedSecretVariable = "EXAMPLE_MCP_AUTH_TOKEN";
+  credentialsVariables = { };   # every OTHER secret this server's file carries
+  # ... see docs/api.md for the whole record
+};
+```
+
+## The boundary, and what holds it
+
+An architecture rule without a mechanism is a wish. Four of them here:
+
+| Layer | Mechanism | The question it answers |
+|---|---|---|
+| Naming | `tests/unit/test_boundary.py` greps **both** halves of the tree | "does any source name a consumer of this layer?" |
+| Dependency | the same file asks a **fresh interpreter** what one import costs | "does importing this drag in an MCP server or an HTTP client?" |
+| Surface | `checks.api-surface` | "does every symbol the published API names exist, and is anything exported that it does not name?" |
+| Posture | `nix/lib/hardening.nix` asserts at **evaluation** | "has a tightening been dropped, or added without anything able to read it back?" |
+
+The last one is worth naming: it used to live only inside a NixOS virtual-machine
+test, and half the boxes in this fleet cannot run one — so on those, the
+completeness bookkeeping never ran at all. It now runs wherever `nix` evaluates.
+
+## Running the checks
+
+```bash
+nix flake check                  # everything below
+nix build .#checks.x86_64-linux.unit-tests     # the Python suite, no VM, seconds
+nix build .#checks.x86_64-linux.api-surface    # the published API, no VM, instant
+nix build .#checks.x86_64-linux.secret-search  # a real system closure, no VM
+nix build .#checks.x86_64-linux.service        # NixOS VM test  (needs KVM)
+nix build .#checks.x86_64-linux.deployment     # NixOS VM test  (needs KVM)
+nix build .#checks.x86_64-linux.hardening      # NixOS VM test  (needs KVM)
+```
+
+**Three of the seven need a builder advertising virtualisation** and will not run
+on a box without `/dev/kvm`. That is why the closure secret search — the check
+that discharges the headline claim — is deliberately *not* a VM test, and why the
+unit suite runs on a bare interpreter.
+
+## Developing
+
+The development shell is `devenv`, and every tool the gate uses comes from it —
+never from the host:
+
+```bash
+devenv shell -- tests        # pytest
+devenv shell -- lint         # ruff
+devenv shell -- typecheck    # ty
+devenv shell -- fmt          # treefmt over the whole tree
+```
+
+`uv.lock` is a **workspace** lock covering both this package and the example
+consumer. Regenerate it with `devenv shell -- uv lock` after changing either
+`pyproject.toml`.
+
+There is deliberately no `.env` and no `dotenv` in the shell. This layer holds no
+credential of its own, and an environment file here would be a credential surface
+on the one component that must not have one.
+
+## What is deliberately NOT here
+
+Each of these was considered and rejected with a reason, and the reasons are what
+keep the layer small:
+
+- **A durable atomic write.** The reference implementation's is truncate-in-place
+  with no `fsync`. Publishing it as "the fleet's durable write" would give every
+  consumer a durability guarantee it does not have. Its *lock* and its *mode
+  enforcement* did move, as `mcp_packaging.store_modes`; its write did not.
+- **`private_umask`.** Umask-plus-chmod is the weaker mechanism this design
+  replaces with mode-from-the-creating-syscall. Publishing it would offer four
+  consumers the mechanism the design rejected.
+- **A fleet port registry.** A map of one operator's services and ports is an
+  operator-specific value, and this repository is public. A consumer passes
+  `defaultPort`; the registry, if wanted, belongs to whatever repository owns
+  fleet configuration.
+- **A generic OAuth2 client.** One consumer needs one, which is not a shared
+  layer — it is a wrapper or a framework, and either breaks the boundary rule on
+  the first commit.
+- **`credentialDelivery` and `hardeningOverrides`.** Two credential mechanisms in
+  a security-relevant shared layer is real surface for a migration its own record
+  calls cheap; an escape hatch on the hardening table has no consumer at all.
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).

@@ -87,6 +87,7 @@ assert
   #: The credentials file the unit is pointed at. Rendered from the same mapping
   #: the search terms come from.
   file = pkgs.writeText "${spec.name}-synthetic-credentials.env" (
-    pkgs.lib.concatStringsSep "\n" (pkgs.lib.mapAttrsToList (name: value: "${name}=${value}") variables) + "\n"
+    pkgs.lib.concatStringsSep "\n" (pkgs.lib.mapAttrsToList (name: value: "${name}=${value}") variables)
+    + "\n"
   );
 }

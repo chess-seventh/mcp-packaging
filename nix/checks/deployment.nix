@@ -40,7 +40,8 @@ let
   # store holds, and a shared layer that knew would have learned a domain schema.
   keepsState = spec ? stateDocument;
   storeDocumentName = if keepsState then spec.stateDocument.name else "";
-  storedDocument = if keepsState then pkgs.writeText storeDocumentName spec.stateDocument.text else null;
+  storedDocument =
+    if keepsState then pkgs.writeText storeDocumentName spec.stateDocument.text else null;
 
   # A pinned address that is NOT the every-interface set and NOT the default, so
   # "the operator chose this on purpose" and "the default is loopback" cannot be
@@ -263,16 +264,14 @@ pkgs.testers.runNixOSTest {
     defaults.wait_for_unit("${spec.name}.service")
     defaults.wait_for_open_port(${toString spec.defaultPort})
 
-    ${
-      lib.optionalString keepsState ''
-        # finds the stored authorisation unchanged
-        #
-        # By CONTENT. "The directory still exists" is satisfied by a store the
-        # service emptied, and the value being protected is the bytes.
-        after = defaults.succeed("sha256sum ${spec.stateArea}/${storeDocumentName}").split()[0]
-        assert after == before, "the stored authorisation changed across a power cut"
-      ''
-    }
+    ${lib.optionalString keepsState ''
+      # finds the stored authorisation unchanged
+      #
+      # By CONTENT. "The directory still exists" is satisfied by a store the
+      # service emptied, and the value being protected is the bytes.
+      after = defaults.succeed("sha256sum ${spec.stateArea}/${storeDocumentName}").split()[0]
+      assert after == before, "the stored authorisation changed across a power cut"
+    ''}
 
     # and the service answering afterwards, which is what makes the survival
     # useful rather than merely tidy.

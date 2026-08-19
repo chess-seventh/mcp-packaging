@@ -49,7 +49,8 @@ let
   # DURABILITY question and never the schema.
   keepsState = spec ? stateDocument;
   storeDocumentName = if keepsState then spec.stateDocument.name else "";
-  storedDocument = if keepsState then pkgs.writeText storeDocumentName spec.stateDocument.text else null;
+  storedDocument =
+    if keepsState then pkgs.writeText storeDocumentName spec.stateDocument.text else null;
 in
 pkgs.testers.runNixOSTest {
   name = "${spec.name}-service";

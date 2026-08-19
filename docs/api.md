@@ -1,0 +1,162 @@
+<!-- markdownlint-disable MD013 -->
+
+# The published API
+
+**A change to anything on this page is a breaking change for every consuming
+repository.** `checks.api-surface` fails the build when the flake stops exporting
+something named here, or starts exporting something that is not.
+
+This page is the reference. The reasoning behind the boundary lives in the
+consuming repository's ADR-001 and ADR-002; where this tree and those documents
+disagree, [What the ADRs promised and this tree does
+not](#what-the-adrs-promised-and-this-tree-does-not) says so explicitly rather
+than leaving a reader to find out by grepping.
+
+## `serviceSpec` — one record, read by every factory
+
+A consumer writes this once and passes the same object to `mkServiceModule`,
+`mkSessionProbe`, `mkChecks` and `mkFixtures`. Each reads what it needs and
+ignores the rest, so a field added for a fourth consumer changes no call site.
+
+### Required
+
+| Field | Type | What it is |
+|---|---|---|
+| `name` | string | The systemd unit name and the service account name. |
+| `description` | string | The unit description, and the option's enable text. |
+| `optionPath` | list of string | Where the module's options live, e.g. `[ "services" "example-mcp" ]`. **Explicit, not derived from `name`** — a consumer whose option path differs from its unit name is legitimate, and deriving it silently forbids that. |
+| `consoleScriptName` | string | The one command the wheel installs. |
+| `entryPoint` | string | `module:function`. Exactly one; the build refuses a package that does not route through it. |
+| `stateDirectory` | string | Passed to `StateDirectory=`, so it resolves under `/var/lib`. |
+| `stateArea` | string | The absolute path the above resolves to. Derive it — two spellings of one fact that disagree is a unit and a check pointing at different directories. |
+| `serviceAccount` | string | The fixed system account. **Not `DynamicUser`** — that moves the state area behind `/var/lib/private/`, so a restart-survival assertion reads a symlink and passes whether or not anything survived. |
+| `defaultListenAddress` | string | Usually `127.0.0.1`. Every-interface values are refused at evaluation. |
+| `defaultPort` | port | This consumer's port. There is no shared default; see below. |
+| `sharedSecretVariable` | string | The name of the bearer secret in the credentials file. |
+| `credentialsDirectoryVariable` | string | The variable the unit sets to where systemd put the loaded credential. A **path**, never a secret. |
+| `credentialsFileExample` | string | ⚠ **Renders into the option description, which lands in the world-readable Nix store on every build.** It must be unmistakably a placeholder; put the word `example` in the path itself so the file name alone answers the question. |
+| `meta` | attrs | Standard package meta for the build output. |
+
+### Optional, and each absence is reported rather than assumed
+
+| Field | Type | What it turns on |
+|---|---|---|
+| `credentialsVariables` | attrs of string | Every **other** secret this consumer's credentials file carries, as `NAME = "SYNTHETIC-…"`. Default `{ }`, which is a real answer: a server whose only secret is its bearer token supplies nothing and every check still runs. |
+| `stateDocument` | `{ name, text }` | The consumer's own persisted document. Turns on the restart-survival, power-cut-survival and unwritable-store scenarios. Absent, each of those **prints a `NOT ASSERTED` line** and the restart and the crash still happen. |
+| `upstreamJournalMarker` | string | A string that could only appear in the journal if this server had reached what it integrates with. Turns on one assertion in the deployment check. |
+| `tokenStoreVariable` | string | The variable the unit sets to the state area. |
+| `toolNames` | list of string | Required by `mkSessionProbe`, which **refuses to build on an empty list** — a generated assertion that can generate to nothing reports a working surface on any `200`, silently. |
+
+## `lib.mkServerPackage`
+
+```text
+{ pkgs, workspaceRoot, distributionName, consoleScriptName, entryPoint,
+  pythonGeneration ? "3.12", sourcePreference ? "wheel",
+  packagesNeedingSetuptools ? [ ], dependencies ? null, meta }
+```
+
+Builds a closed Python environment from `workspaceRoot`'s own `uv.lock`, then
+asserts in a `runCommand` that the installed `consoleScriptName` routes through
+`entryPoint`. **The assertion is the point** — a flake naming a command reads
+identically whether or not the build puts that command anywhere.
+
+`dependencies` is for one case only: a uv **workspace**, where the lock's default
+dependency set belongs to the root rather than to the member being built. Pass
+`{ <distribution> = [ ]; }`. Every ordinary consumer leaves it null.
+
+## `lib.mkServiceModule`
+
+```text
+{ spec } -> a NixOS module
+```
+
+**Two guarantees are unconditional behaviour and must never become parameters**,
+because leaving their ownership unstated is how a fleet ends up with five copies
+of a safety-critical assertion and one of them wrong:
+
+1. **The every-interface refusal.** `0.0.0.0`, `::`, `[::]`, `::0`, `0`, `*` and
+   the empty string are refused at evaluation with a message naming the offending
+   value and the alternative. Not an `extraAssertion`, not overridable. The empty
+   string is on the list because it is the likeliest typo of the lot.
+1. **The credentials option type.** It refuses a non-absolute string, and it
+   refuses a **Nix path literal** — which is the case that matters: an unquoted
+   `./secrets.env` passes `isStringLike` *and* the `/` prefix guard, and the
+   module then copies the secrets into the world-readable store. The refusal says
+   "put quotation marks round it", and **never repeats the value it was given** —
+   a refusal that echoes the offending definition performs a smaller version of
+   the leak it is refusing.
+
+The hardening set is spliced with `//` rather than `mkMerge`, so a consumer
+cannot weaken a tightening by defining the same directive at a lower priority.
+
+There are **no `extraOptions` / `extraServiceConfig` / `extraEnvironment` /
+`extraAssertions` passthroughs.** ADR-002 §3 requires each to name the value it
+carries today and to be deleted before publication if it carries none. None
+carries one. A passthrough with no consumer is a hole in the boundary rule.
+
+## `lib.mkChecks`
+
+```text
+{ pkgs, lib ? pkgs.lib, nixpkgs, system, spec, serverPackage }
+  -> { service, deployment, hardening, secret-search }
+```
+
+One call, four checks. Importing them one by one — which is what the reference
+implementation did — means a consumer can import three, and the one it skips is
+invisible: no diff, no refusal, and a repository that ships four checks and runs
+three reports green.
+
+`nixpkgs` is the consumer's own flake input; `secret-search` needs `nixosSystem`
+because it builds a **real system** rather than a virtual machine.
+
+Three of the four need a builder advertising virtualisation. `secret-search` does
+not, and that is deliberate: the check discharging the headline guarantee must
+not be gated behind a capability half a fleet lacks.
+
+## `lib.hardening`
+
+Plain data. Two objects in one file:
+
+- `serviceConfig` — the ~28 directives a factory-built unit applies.
+- `posture` — `booleanDirectives`, `stringDirectives`, `notTightenings` and
+  `required`, in the spellings and values **systemd reports**, measured on a
+  running unit rather than taken from the manual.
+
+⚠ **The two halves are independently hand-written and must stay that way.**
+Deriving `posture.required` from `serviceConfig` is the change that makes a
+deletion invisible: it would leave the expected side and the asked side at once,
+and the check would pass. Two assertions in the file keep them honest instead —
+a dropped directive and an unreadable-back directive each fail **evaluation**, by
+name.
+
+## `lib.mkFixtures`
+
+```text
+{ pkgs, spec } -> { sharedSecret, variables, values, file }
+```
+
+The synthetic credentials, built once from `spec.sharedSecretVariable` and
+`spec.credentialsVariables`. Every check takes both its search terms and its
+supplied values from here, which is what makes "the search term and the supplied
+value are one object" true across all four rather than inside one.
+
+Refuses at evaluation a value that is not `SYNTHETIC-` prefixed, shorter than 24
+characters, or a duplicate of another.
+
+## What the ADRs promised and this tree does not
+
+Written down because the alternative is a reader grepping for a factory that was
+never built. Each line is a decision, not an omission.
+
+| Promised | Where | Status here |
+|---|---|---|
+| `lib/ports.nix`, a fleet port registry | ADR-002 §2 | **Not built, and correctly so.** ADR-007 §2 later rejected it: a map of one operator's services and ports is an operator-specific value, and publishing it falsifies the sentence ADR-001's publication decision rests on. ADR-002 §2 was never amended. |
+| The evaluation-time port-collision assertion | ADR-007 §3 | **Not built here.** ADR-007 flags it for the owner's judgement rather than assuming it, because it adds an option to a host's configuration and fleet configuration is out of scope. Batoned as its own lane. |
+| `mcp_packaging.contracts`, a `Protocol` for driven adapters | ADR-002 §1 | **Not built.** The reference implementation has no such protocol to move — its ports (`TokenReader` / `TokenWriter`) are its own and stay there. Writing one here would be speculative generality on the component least allowed any. |
+| `mcp_packaging.serve` | ADR-002 §1 | **Already present** as `transport.serve_http` / `transport.serve_stdio`. |
+| Delete the dead `MCP_PATH` constant | ADR-002 §1 | **Kept.** It was dead in the prior art and is not dead now — the acceptance suite reads it to enumerate every route the guard must cover. |
+| Collapse the duplicate `TransportKind` / `events.Transport` enums | ADR-002 §1 | **Already one.** The duplicate did not survive into the code this moved from. |
+| `checks/version-parity.nix`, `checks/machine-support.nix` | ADR-002 §2 | **Not present in the tree that was moved.** Their content lives inside the four checks that are here. |
+| The four checks move "as-is" | ADR-002 §2 | **They could not.** Every one read `clientIdVariable` / `clientSecretVariable` / `refreshTokenVariable` — an OAuth2 grant by construction — and two planted a fixed-schema credential document. Moved as they stood they fit two of the fleet's five consumers. Generalised onto `credentialsVariables` and `stateDocument`. |
+| `DEFAULT_PORT = a port one server holds` in the transport | prior art | **Dropped.** It is one consumer's port allocation; a shared default hands every other server a port already taken. |
+| `ProbeCheck` as a closed enum | prior art | **Opened**, exactly as `EventName` already was. `store_corrupt` and `seed_rolled_back` left it — one is about a document only a consumer can parse, the other is one consumer's rotation semantics. |

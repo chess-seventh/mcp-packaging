@@ -26,13 +26,15 @@ from pathlib import Path
 from mcp_packaging import credentials_file
 from mcp_packaging.bearer import MINIMUM_TOKEN_LENGTH, verify_bearer_token
 from mcp_packaging.events import EventName, emit_event
-from mcp_packaging.startup_probe import ProbeCheck, ProbeCheckFn, StartupRefused
-from mcp_packaging.startup_probe import run as run_startup_probe
 from mcp_packaging.startup_probe import (
+    ProbeCheck,
+    ProbeCheckFn,
+    StartupRefused,
     private_directory_check,
     private_files_check,
     shared_secret_check,
 )
+from mcp_packaging.startup_probe import run as run_startup_probe
 from mcp_packaging.transport import DEFAULT_HOST, McpServer, TransportKind, serve_http, serve_stdio
 
 #: Where the service manager listens for the readiness notification. Named HERE

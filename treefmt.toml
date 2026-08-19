@@ -8,7 +8,16 @@ excludes = []
 includes = ["*.md"]
 options = []
 
-[formatter.nixfmt-classic]
+# ⚠ NAMED `nixfmt`, NOT `nixfmt-classic`, AND THE NAME IS LOAD-BEARING. The
+# reference repository's config declares the formatter under the section name
+# `nixfmt-classic` while its shell supplies `pkgs.nixfmt` - the RFC-style tool -
+# and the whole tree is written in RFC style. treefmt takes the BINARY from
+# `command`, so that config happened to be correct only as long as the binary on
+# PATH was the RFC one; run with `nixfmt-classic` genuinely on PATH and it
+# reflows every Nix file in the repository into the pre-RFC style. With
+# `allow-missing-formatter = true` above, a box without the tool reports clean
+# either way, so nothing ever said which style the tree was in.
+[formatter.nixfmt]
 command = "nixfmt"
 excludes = []
 includes = ["*.nix"]
