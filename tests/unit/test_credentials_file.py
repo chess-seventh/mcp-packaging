@@ -1,7 +1,7 @@
 """The credentials parse and the requirement check. Pure, so plain function tests.
 
 Every function here is an ADR-002 §7 "pure" contract shape: no observable
-mutation, no I/O, no environment. (Two of them are the ones §7 names; the four
+mutation, no I/O, no environment. (Two of them are the ones §7 names; the three
 message builders are pure for the same reason and are covered here too.)
 
 The file *reading* stays in a consumer's composition root, which is why nothing
