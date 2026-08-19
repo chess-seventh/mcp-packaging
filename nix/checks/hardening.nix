@@ -56,7 +56,7 @@ let
     enable = true;
     package = serverPackage;
     listenAddress = spec.defaultListenAddress;
-    credentialsFile = "${fixtures.file}";
+    credentialsFile = fixtures.hostPath;
   };
 
   optionAttr = value: lib.setAttrByPath spec.optionPath value;
@@ -99,7 +99,10 @@ pkgs.testers.runNixOSTest {
   nodes.box =
     { ... }:
     {
-      imports = [ serviceModule ];
+      imports = [
+        serviceModule
+        fixtures.hostModule
+      ];
       config = optionAttr serviceOptions;
     };
 

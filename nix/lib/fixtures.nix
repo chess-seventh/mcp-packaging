@@ -81,11 +81,29 @@ assert
     Each value is a separate absence claim against the closure. Two identical values make one of
     those claims a restatement of the other rather than a second measurement.
   '';
-{
+rec {
   inherit sharedSecret variables values;
 
-  #: The credentials file the unit is pointed at. Rendered from the same mapping
-  #: the search terms come from.
+  #: Where a MACHINE finds the credentials file. ⚠ NOT the store path below, and
+  #: the difference is the module's own guarantee biting its own checks: a
+  #: credentials file named as a store path is refused at evaluation, because an
+  #: interpolated path literal is how a real operator accidentally copies a real
+  #: secret into the world-readable store. The checks were handing the module
+  #: exactly that shape, so they were the least production-like part of a suite
+  #: whose whole job is to be production-like.
+  #:
+  #: `hostModule` places the fixture the way a host delivers one, and `hostPath`
+  #: is what the unit is pointed at. The fixture is still IN the store - it has to
+  #: be, a sandbox has no other source - but the module is handed a host path, and
+  #: the closure search deliberately uses a runtime path for the same reason.
+  hostPath = "/etc/${spec.name}-credentials.env";
+
+  hostModule = {
+    environment.etc."${spec.name}-credentials.env".source = file;
+  };
+
+  #: The credentials file itself. Rendered from the same mapping the search terms
+  #: come from.
   file = pkgs.writeText "${spec.name}-synthetic-credentials.env" (
     pkgs.lib.concatStringsSep "\n" (pkgs.lib.mapAttrsToList (name: value: "${name}=${value}") variables)
     + "\n"

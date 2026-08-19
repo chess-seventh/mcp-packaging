@@ -30,7 +30,7 @@ let
     enable = true;
     package = serverPackage;
     listenAddress = spec.defaultListenAddress;
-    credentialsFile = "${fixtures.file}";
+    credentialsFile = fixtures.hostPath;
   };
 
   optionAttr = value: lib.setAttrByPath spec.optionPath value;
@@ -60,7 +60,10 @@ pkgs.testers.runNixOSTest {
     supplied =
       { ... }:
       {
-        imports = [ (import ../lib/mkServiceModule.nix { inherit spec; }) ];
+        imports = [
+          (import ../lib/mkServiceModule.nix { inherit spec; })
+          fixtures.hostModule
+        ];
         config = optionAttr serviceOptions;
       };
 
@@ -71,7 +74,10 @@ pkgs.testers.runNixOSTest {
     starved =
       { ... }:
       {
-        imports = [ (import ../lib/mkServiceModule.nix { inherit spec; }) ];
+        imports = [
+          (import ../lib/mkServiceModule.nix { inherit spec; })
+          fixtures.hostModule
+        ];
         config = optionAttr (serviceOptions // { credentialsFile = "/run/secrets/absent-on-purpose.env"; });
       };
   };

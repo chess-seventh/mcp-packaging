@@ -60,7 +60,7 @@ let
   serviceOptions = {
     enable = true;
     package = serverPackage;
-    credentialsFile = "${fixtures.file}";
+    credentialsFile = fixtures.hostPath;
   };
 
   optionAttr = value: lib.setAttrByPath spec.optionPath value;
@@ -102,7 +102,10 @@ pkgs.testers.runNixOSTest {
     defaults =
       { ... }:
       {
-        imports = [ serviceModule ];
+        imports = [
+          serviceModule
+          fixtures.hostModule
+        ];
         config = optionAttr serviceOptions;
       };
 
@@ -110,7 +113,10 @@ pkgs.testers.runNixOSTest {
     pinned =
       { ... }:
       {
-        imports = [ serviceModule ];
+        imports = [
+          serviceModule
+          fixtures.hostModule
+        ];
         config = optionAttr (serviceOptions // { listenAddress = pinnedListenAddress; });
       };
 
@@ -119,7 +125,10 @@ pkgs.testers.runNixOSTest {
     contended =
       { ... }:
       {
-        imports = [ serviceModule ];
+        imports = [
+          serviceModule
+          fixtures.hostModule
+        ];
         config = optionAttr serviceOptions // {
           systemd.sockets.port-squatter = {
             wantedBy = [ "sockets.target" ];
@@ -138,6 +147,7 @@ pkgs.testers.runNixOSTest {
         imports = [
           serviceModule
           secondModule
+          fixtures.hostModule
         ];
         # mkMerge, NOT `//`. The two option paths share their first component, so
         # a shallow update makes the second `services` attrset REPLACE the first
@@ -167,7 +177,10 @@ pkgs.testers.runNixOSTest {
     unwritable =
       { ... }:
       {
-        imports = [ serviceModule ];
+        imports = [
+          serviceModule
+          fixtures.hostModule
+        ];
         config = optionAttr serviceOptions // {
           systemd.services.${spec.name}.serviceConfig.ReadOnlyPaths = [ spec.stateArea ];
         };
