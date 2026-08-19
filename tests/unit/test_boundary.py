@@ -48,10 +48,13 @@ def _readable(path: pathlib.Path) -> str:
         return ""
 
 
-#: This file must be able to write the patterns down in order to search for them.
-SELF = pathlib.Path(__file__).resolve()
-
-SCANNED = [path for path in _tracked() if path != SELF]
+#: ⚠ THIS FILE IS SCANNED TOO, AND IT USED NOT TO BE. It excluded itself "so it
+#: could write the patterns down" - and then wrote the forbidden names into its
+#: own docstrings, explaining why they were forbidden. The one file whose job is
+#: keeping operator facts out of a public repository was the only file still
+#: publishing them, exempted by its own rule. Hashing every token is precisely
+#: what makes the exemption unnecessary: nothing here has to spell one.
+SCANNED = _tracked()
 
 #: ⚠ EXCLUDED FROM THE ADDRESS RULES ONLY, never from the name rules. A lock file
 #: is a machine-written record of where its own dependencies came from, so it is
@@ -74,19 +77,20 @@ OWN_NAMES = ("mcp-packaging", "mcp_packaging", "example-mcp", "example_mcp")
 #: operator facts out of it. The pattern catches every server in the family
 #: including ones that do not exist yet, and it names none of them.
 #:
-#: `IGNORECASE`, because the first pattern was `[a-z]`-only and `The reference another-server`
-#: at the start of a sentence walked past it.
+#: `IGNORECASE`, because the first pattern was `[a-z]`-only, so the same name
+#: capitalised at the start of a sentence walked past it.
 SIBLING_SERVER = re.compile(
     rf"\b(?!(?:{'|'.join(OWN_NAMES)})\b)[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*[-_]mcp\b",
     re.IGNORECASE,
 )
 
 #: ⚠ HASHED, BECAUSE A PATTERN CANNOT SEE A BARE VENDOR NAME AND A LIST CANNOT BE
-#: PUBLISHED. Dropping the roster closed a publication hole and opened a coverage
-#: one: `the reference consumer`, `the prior art` and `an-upstream-host` written WITHOUT the `-mcp` suffix went
-#: through a pattern the roster had caught. Salted digests catch the exact token
-#: and disclose nothing - a reader of this file learns that five words are
-#: forbidden and cannot learn which.
+#: PUBLISHED. A shape pattern catches `<something>-mcp`; it cannot catch the same
+#: vendor written on its own, and written on its own is how the leak that started
+#: all of this was written. So dropping the roster closed a publication hole and
+#: opened a coverage one. Salted digests close both: the rule still fires on the
+#: exact token, and a reader of this file learns that six words are forbidden and
+#: cannot learn which.
 #:
 #: The refusal therefore cannot name the word. It names the FILE and the position,
 #: which is enough: whoever just wrote it knows which word it was.
@@ -98,11 +102,15 @@ FORBIDDEN_DIGESTS = frozenset(
         "REDACTED-DIGEST-3",
         "REDACTED-DIGEST-4",
         "REDACTED-DIGEST-5",
+        "REDACTED-DIGEST-6",
     }
 )
 
-#: Words split on this, lowercased, before hashing.
-TOKEN = re.compile(r"[a-z0-9]+")
+#: Words split on this, lowercased, before hashing. Underscores are part of a
+#: token rather than a separator, so a two-word domain noun spelled the way code
+#: spells it is ONE token and can be hashed; split on it, each half would be an
+#: ordinary English word no rule could forbid.
+TOKEN = re.compile(r"[a-z0-9_]+")
 
 #: A URL naming a LITERAL REMOTE HOST. Interpolated and loopback authorities are
 #: allowed: those are the layer reaching a machine it was POINTED AT, which is the
@@ -130,9 +138,6 @@ BARE_HOST = re.compile(
 #: and an allocation is an operator's.
 FLEET_PORT = re.compile(r"(?<![\d.])8[0-9]{3}(?![\d.])")
 OWN_PORT = "8799"
-
-#: A domain noun no packaging layer has a reason to spell.
-FORBIDDEN_WORDS = ("a-domain-reading",)
 
 
 def _relative(path: pathlib.Path) -> str:
@@ -209,15 +214,6 @@ def test_no_published_file_writes_a_port_allocation(source: pathlib.Path) -> Non
     """
     found = sorted({port for port in FLEET_PORT.findall(_readable(source)) if port != OWN_PORT})
     assert found == [], f"{_relative(source)} writes {found}, and a port allocation is an operator's"
-
-
-@pytest.mark.boundary
-@pytest.mark.parametrize("source", SCANNED, ids=_relative)
-def test_no_published_file_names_a_domain_noun(source: pathlib.Path) -> None:
-    """The few words that can only appear here by mistake."""
-    text = _readable(source).lower()
-    found = [word for word in FORBIDDEN_WORDS if word in text]
-    assert found == [], f"{_relative(source)} names {found}, and this layer knows no domain"
 
 
 @pytest.mark.boundary
