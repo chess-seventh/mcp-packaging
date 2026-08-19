@@ -139,6 +139,10 @@ in
     listenAddress = lib.mkOption {
       type = lib.types.str;
       default = spec.defaultListenAddress;
+      # TEST-NET-1, the block IETF reserved for documentation. ⚠ NOT a private
+      # LAN address, which is what this was: an option description lands in the
+      # world-readable nix store, and a plausible-looking address there is one
+      # somebody later cannot tell from a real deployment's.
       example = "192.0.2.10";
       # The deliverable HERE is the text an operator configures against, so the
       # words are the thing rather than a description of it. A document that

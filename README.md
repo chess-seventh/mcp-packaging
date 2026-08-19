@@ -77,24 +77,34 @@ An architecture rule without a mechanism is a wish. Four of them here:
 
 | Layer | Mechanism | The question it answers |
 |---|---|---|
-| Naming | `tests/unit/test_boundary.py` over **every file git tracks** — a shape pattern, plus salted digests for the bare names a pattern cannot see | "does anything this repository publishes name another server?" |
-| Address | the same file, over every tracked file except the two lock files | "does anything name a machine outside this repository, with or without a scheme, or a port allocation?" |
+| Naming | `tests/unit/test_boundary.py` over every published file **and every published path** | "does anything here name another server in this family?" |
+| Address | the same file, over every published file except the two lock files | "does anything name a machine outside this repository — by URL, by bare hostname, or by IP — or a port in the range these servers run in?" |
 | Dependency | the same file asks a **fresh interpreter** what one import costs | "does importing this drag in an MCP server or an HTTP client?" |
 | Surface | `checks.api-surface` | "does every symbol the published API names exist, and is anything exported that it does not name?" |
 | Posture | `nix/lib/hardening.nix` asserts at **evaluation** | "has a tightening been dropped, or added without anything able to read it back?" |
 
 The naming rule matches by **shape** — any `<something>-mcp` that is not this
-repository's own — rather than against a list of servers. A list would be a roster
-of private repositories, published, in the one file whose job is to keep operator
-facts out of a public tree. The bare names a shape cannot catch are held as
-**salted digests**: the rule still fires on the exact token, and a reader learns
-only that some words are forbidden, never which. Its refusal names the file and
-the offset and deliberately not the word.
+repository's own — rather than against a list of servers, so it holds for a
+consumer nobody has written yet and it publishes no roster.
+
+**What it deliberately does not do, because it cannot:** there is no rule for a
+vendor name written on its own, with no `-mcp` suffix. To catch one, a rule must
+know the word, and any representation of "this exact word is forbidden" that
+lives in a public tree can be read back. A salted SHA-256 was tried and is no
+better than a plain list — the salt sits beside it, the words are short and
+ordinary, and a reviewer recovered every one from a hand-typed candidate list in
+under a minute. A false claim about a disclosure is worse than the disclosure, so
+the rule was removed rather than dressed up. Bare names are caught **before**
+publication instead: by review, and by the redaction pass that rewrites this
+branch's history before its first push.
 
 The two lock files are exempt from the *address* rules and from nothing else. A
 lock file is a machine-written record of where its own dependencies came from, so
 it carries registry addresses by construction; a consumer's name cannot arrive in
 one by hand, and the naming rules still read them.
+
+Nothing scans **commit messages**. The current history is clean and was checked,
+but no rule keeps it so — that belongs to a hook, not to a unit test.
 
 The last one is worth naming: it used to live only inside a NixOS virtual-machine
 test, and half the boxes in this fleet cannot run one — so on those, the

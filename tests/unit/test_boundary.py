@@ -11,7 +11,6 @@ closure nobody opens.
 from __future__ import annotations
 
 import ast
-import hashlib
 import importlib
 import pathlib
 import re
@@ -29,8 +28,26 @@ REPOSITORY = pathlib.Path(__file__).resolve().parents[2]
 #: honest - it caught this very list missing three entries on its first run.
 UNPUBLISHED_FILES = {".git", "devenv.lock", ".pre-commit-config.yaml"}
 
-#: Directories that are build or interpreter output rather than source.
-UNPUBLISHED_DIRS = {"__pycache__", "build", "dist", "htmlcov"}
+#: Directories that are build output, interpreter output or shell state rather
+#: than source. ⚠ NAMED, RATHER THAN "ANYTHING STARTING WITH A DOT". The dot rule
+#: was shorter and it made `.github/` invisible to the gate - a workflow file
+#: naming an upstream would have passed `nix flake check` and been caught only by
+#: a dev-shell run somebody remembered to do. The enforcing gate must not be the
+#: blind one.
+UNPUBLISHED_DIRS = {
+    "__pycache__",
+    "build",
+    "dist",
+    "htmlcov",
+    ".git",
+    ".devenv",
+    ".direnv",
+    ".venv",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".mypy_cache",
+    ".nwave",
+}
 
 
 def _published() -> list[pathlib.Path]:
@@ -42,10 +59,9 @@ def _published() -> list[pathlib.Path]:
     there and failed at import. A boundary rule that cannot run in the gate is a
     boundary rule that runs only where somebody remembers to run it.
 
-    Every DOT-DIRECTORY is skipped, because on this tree they are all caches and
-    shell state; dot-FILES are kept, because `.gitignore` is one and is published.
-    ⚠ `.git` is on the FILE list rather than the directory one: in a linked git
-    worktree it is a file, so a rule that only skipped dot-directories read it.
+    Excluded directories are NAMED rather than matched on a leading dot, so a
+    tracked `.github/` is scanned. ⚠ `.git` is on BOTH lists: in a linked git
+    worktree it is a file, so a directory rule alone would read it.
     """
     return sorted(
         path
@@ -53,8 +69,7 @@ def _published() -> list[pathlib.Path]:
         if path.is_file()
         and not path.is_symlink()
         and not any(
-            part.startswith(".") or part in UNPUBLISHED_DIRS or part.endswith(".egg-info")
-            for part in path.relative_to(REPOSITORY).parts[:-1]
+            part in UNPUBLISHED_DIRS or part.endswith(".egg-info") for part in path.relative_to(REPOSITORY).parts[:-1]
         )
         and path.name not in UNPUBLISHED_FILES
         and not path.name.startswith("result")
@@ -105,33 +120,20 @@ SIBLING_SERVER = re.compile(
     re.IGNORECASE,
 )
 
-#: ⚠ HASHED, BECAUSE A PATTERN CANNOT SEE A BARE VENDOR NAME AND A LIST CANNOT BE
-#: PUBLISHED. A shape pattern catches `<something>-mcp`; it cannot catch the same
-#: vendor written on its own, and written on its own is how the leak that started
-#: all of this was written. So dropping the roster closed a publication hole and
-#: opened a coverage one. Salted digests close both: the rule still fires on the
-#: exact token, and a reader of this file learns that six words are forbidden and
-#: cannot learn which.
-#:
-#: The refusal therefore cannot name the word. It names the FILE and the position,
-#: which is enough: whoever just wrote it knows which word it was.
-_SALT = "REDACTED-SALT"
-FORBIDDEN_DIGESTS = frozenset(
-    {
-        "REDACTED-DIGEST-1",
-        "REDACTED-DIGEST-2",
-        "REDACTED-DIGEST-3",
-        "REDACTED-DIGEST-4",
-        "REDACTED-DIGEST-5",
-        "REDACTED-DIGEST-6",
-    }
-)
-
-#: Words split on this, lowercased, before hashing. Underscores are part of a
-#: token rather than a separator, so a two-word domain noun spelled the way code
-#: spells it is ONE token and can be hashed; split on it, each half would be an
-#: ordinary English word no rule could forbid.
-TOKEN = re.compile(r"[a-z0-9_]+")
+# ⚠ THERE IS NO BARE-VENDOR-NAME RULE HERE, AND ITS ABSENCE IS A DECISION THAT
+# COST THREE ATTEMPTS. To catch a vendor written on its own, a rule has to know
+# the word; and any representation of "this exact word is forbidden" that lives
+# in a PUBLIC tree can be read back. A plaintext list obviously. A salted SHA-256
+# was tried and is no better: the salt sits beside it, the words are short and
+# ordinary, and a reviewer recovered all six from a hand-typed candidate list in
+# under a minute, with no wordlist and no GPU. A comment claiming a reader
+# "cannot learn which" was simply false, and a false claim about a disclosure is
+# worse than the disclosure.
+#
+# So this file enforces the rules that publish NOTHING - a shape, an address, a
+# port, a filename - and the bare name is caught upstream of publication instead:
+# by the redaction pass that rewrites this branch before its first push, and by
+# review. `README.md` says so rather than implying coverage that is not here.
 
 #: A URL naming a LITERAL REMOTE HOST. Interpolated and loopback authorities are
 #: allowed: those are the layer reaching a machine it was POINTED AT, which is the
@@ -148,16 +150,38 @@ URL = re.compile(
 #: that was found grepping a journal for one consumer's API host wrote it bare -
 #: no `https://` in front of it - so a rule keyed on a scheme would have missed
 #: the very thing it was written for.
+#: ⚠ THE FIRST VERSION KNEW SEVEN TOP-LEVEL DOMAINS, WHICH IS THE WRONG SEVEN.
+#: A host under `.ch`, `.dev`, `.cloud` or any country code walked past a rule
+#: written to catch upstreams. The list is long now and still finite - a filename
+#: is shaped exactly like a host, so a rule matching ANY dotted name would fire on
+#: `pyproject.toml` - and what it cannot cover is stated in the README.
 BARE_HOST = re.compile(
     r"\b(?!github\.com|pypi\.org|python\.org|nixos\.org)"
-    r"[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.(?:net|com|io|org|internal|local|lan)\b",
+    r"[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*"
+    r"\.(?:net|com|io|org|internal|local|lan|dev|app|cloud|ai|xyz|site|online"
+    r"|ch|de|fr|uk|eu|us|es|it|nl|be|at|se|no|dk|fi|pl|pt|ie|cz)\b",
     re.IGNORECASE,
 )
+
+#: An address with no name at all. `BARE_HOST` cannot see one, and a fleet is
+#: reached by address at least as often as by name.
+#:
+#: Three ranges are this layer's own vocabulary and are allowed: the whole of
+#: loopback (the checks bind a SECOND loopback address on purpose, to tell "the
+#: operator chose this" from "the default is loopback"), the every-interface
+#: value the module refuses by name, and TEST-NET-1 - the block IETF reserved so
+#: that a documentation address cannot be mistaken for somebody's real one.
+IP_ADDRESS = re.compile(r"(?<![\d.])(?!127\.|0\.0\.0\.0|192\.0\.2\.)(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
 
 #: A port in the range these servers are deployed in. The example's own is the one
 #: number this repository may write; anything else in the range is an allocation,
 #: and an allocation is an operator's.
-FLEET_PORT = re.compile(r"(?<![\d.])8[0-9]{3}(?![\d.])")
+#:
+#: ⚠ THE LOOKAHEAD EXCLUDED A FULL STOP AND THAT KILLED THE RULE. A port at the
+#: end of a sentence passed while the same port mid-sentence failed - and the
+#: leak this rule was added to stop recurring was a sentence in a reference
+#: document, which is to say prose, which is to say it ended in a full stop.
+FLEET_PORT = re.compile(r"(?<![\d.])8[0-9]{3}(?!\d)")
 OWN_PORT = "8799"
 
 
@@ -183,33 +207,6 @@ def test_no_published_file_names_another_server(source: pathlib.Path) -> None:
 
 
 @pytest.mark.boundary
-@pytest.mark.parametrize("source", SCANNED, ids=_relative)
-def test_no_published_file_writes_a_forbidden_token(source: pathlib.Path) -> None:
-    """The bare vendor names a shape-based pattern cannot see.
-
-    ⚠ THIS IS THE HALF THAT DROPPING THE ROSTER LOST. A pattern catches
-    `<name>-mcp`; it cannot catch the same vendor written on its own, which is how
-    the last real leak was written. Digests restore the coverage without restoring
-    the disclosure.
-
-    The refusal names the file and the token's position and NOT the token. That is
-    the whole point of hashing it, and it costs nothing in practice: whoever just
-    wrote the word can see which one it is.
-    """
-    text = _readable(source).lower()
-    offences = [
-        match.start()
-        for match in TOKEN.finditer(text)
-        if hashlib.sha256((_SALT + match.group()).encode()).hexdigest()[:32] in FORBIDDEN_DIGESTS
-    ]
-    assert offences == [], (
-        f"{_relative(source)} writes a forbidden token at offset(s) {offences[:5]}. "
-        "It is a name this layer may not know; the message does not repeat it, because this "
-        "repository is public and the refusal would publish the very thing it refuses."
-    )
-
-
-@pytest.mark.boundary
 @pytest.mark.parametrize("source", ADDRESSABLE, ids=_relative)
 def test_no_published_file_names_an_upstream(source: pathlib.Path) -> None:
     """No address of a machine outside this repository, with or without a scheme.
@@ -220,7 +217,7 @@ def test_no_published_file_names_an_upstream(source: pathlib.Path) -> None:
     twice. A rule keyed on `https://` would have missed it, so there are two.
     """
     text = _readable(source)
-    found = sorted({*URL.findall(text), *BARE_HOST.findall(text)})
+    found = sorted({*URL.findall(text), *BARE_HOST.findall(text), *IP_ADDRESS.findall(text)})
     assert found == [], f"{_relative(source)} names {found}, and this layer reaches nothing"
 
 
@@ -322,3 +319,19 @@ def test_the_scanned_set_is_exactly_what_git_publishes() -> None:
 
     assert walked - tracked == set(), f"the walk scans files git does not publish: {sorted(walked - tracked)}"
     assert tracked - walked == set(), f"git publishes files the walk does not scan: {sorted(tracked - walked)}"
+
+
+@pytest.mark.boundary
+def test_no_published_path_names_another_server_or_an_upstream() -> None:
+    """A NAME, not only a body. Every rule above reads file CONTENTS.
+
+    ⚠ `docs/<vendor>-notes.md` with an entirely innocuous body passed all of them,
+    and a public repository publishes its file listing on the landing page. The
+    path is the first thing a visitor reads and it was the one thing unchecked.
+    """
+    offences = sorted(
+        _relative(path)
+        for path in SCANNED
+        if SIBLING_SERVER.search(_relative(path)) or BARE_HOST.search(_relative(path))
+    )
+    assert offences == [], f"these paths name something this layer may not know: {offences}"
