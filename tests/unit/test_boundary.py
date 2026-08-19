@@ -15,6 +15,7 @@ import hashlib
 import importlib
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 
@@ -23,21 +24,41 @@ import pytest
 REPOSITORY = pathlib.Path(__file__).resolve().parents[2]
 
 
-def _tracked() -> list[pathlib.Path]:
-    """Every file git tracks, which is exactly what a push publishes.
+#: Files this repository ignores rather than publishes. ⚠ A HAND-WRITTEN LIST,
+#: and `test_the_scanned_set_is_exactly_what_git_publishes` is what keeps it
+#: honest - it caught this very list missing three entries on its first run.
+UNPUBLISHED_FILES = {".git", "devenv.lock", ".pre-commit-config.yaml"}
 
-    ⚠ NOT A GLOB OVER FOUR EXTENSIONS, and the first version was. It scanned
-    `*.py`, `*.nix`, `*.toml` and `*.md`, so a name planted in `LICENSE`,
-    `devenv.yaml`, `.gitignore` or either lock file went straight through while
-    `README.md` claimed the mechanism covered "every published file". The set a
-    push publishes is the set git tracks, so that is the set asked.
+#: Directories that are build or interpreter output rather than source.
+UNPUBLISHED_DIRS = {"__pycache__", "build", "dist", "htmlcov"}
+
+
+def _published() -> list[pathlib.Path]:
+    """Every file this repository publishes, by walking it.
+
+    ⚠ NOT `git ls-files`, AND THE REASON IS THE NIX SANDBOX. The unit check runs
+    inside a build with no `git` binary and no `.git` directory - the source is a
+    copied store path - so a mechanism that shelled out to git collected nothing
+    there and failed at import. A boundary rule that cannot run in the gate is a
+    boundary rule that runs only where somebody remembers to run it.
+
+    Every DOT-DIRECTORY is skipped, because on this tree they are all caches and
+    shell state; dot-FILES are kept, because `.gitignore` is one and is published.
+    ⚠ `.git` is on the FILE list rather than the directory one: in a linked git
+    worktree it is a file, so a rule that only skipped dot-directories read it.
     """
-    listing = subprocess.run(
-        ["git", "-C", str(REPOSITORY), "ls-files", "-z"],
-        capture_output=True,
-        check=True,
+    return sorted(
+        path
+        for path in REPOSITORY.rglob("*")
+        if path.is_file()
+        and not path.is_symlink()
+        and not any(
+            part.startswith(".") or part in UNPUBLISHED_DIRS or part.endswith(".egg-info")
+            for part in path.relative_to(REPOSITORY).parts[:-1]
+        )
+        and path.name not in UNPUBLISHED_FILES
+        and not path.name.startswith("result")
     )
-    return sorted(REPOSITORY / name for name in listing.stdout.decode().split("\0") if name)
 
 
 def _readable(path: pathlib.Path) -> str:
@@ -54,7 +75,7 @@ def _readable(path: pathlib.Path) -> str:
 #: keeping operator facts out of a public repository was the only file still
 #: publishing them, exempted by its own rule. Hashing every token is precisely
 #: what makes the exemption unnecessary: nothing here has to spell one.
-SCANNED = _tracked()
+SCANNED = _published()
 
 #: ⚠ EXCLUDED FROM THE ADDRESS RULES ONLY, never from the name rules. A lock file
 #: is a machine-written record of where its own dependencies came from, so it is
@@ -271,3 +292,33 @@ def test_every_module_the_package_ships_is_importable() -> None:
     """A module that cannot be imported is a module no other test here covers."""
     for source in PYTHON_SOURCES:
         importlib.import_module(f"mcp_packaging.{source.stem}" if source.stem != "__init__" else "mcp_packaging")
+
+
+@pytest.mark.boundary
+def test_the_scanned_set_is_exactly_what_git_publishes() -> None:
+    """The walk above and `git ls-files` must agree.
+
+    ⚠ THE WALK IS THE MECHANISM AND THIS IS THE CHECK ON IT. The walk has to be
+    the mechanism, because the gate runs it where git does not exist. But a walk
+    with a hand-written exclusion list drifts from what a push actually sends the
+    moment somebody adds a build directory, and the drift is invisible: files
+    simply stop being scanned and everything still passes.
+
+    So wherever git IS available - the development shell, a pre-commit hook - the
+    two are compared and a difference is a failure. Where it is not, this one test
+    reports why it could not ask, and every other rule in the file still runs
+    against the walk.
+    """
+    if not (REPOSITORY / ".git").exists() or shutil.which("git") is None:
+        pytest.skip("no git here (the Nix sandbox); the walk is unchecked in this environment")
+
+    listing = subprocess.run(
+        ["git", "-C", str(REPOSITORY), "ls-files", "-z"],
+        capture_output=True,
+        check=True,
+    )
+    tracked = {REPOSITORY / name for name in listing.stdout.decode().split("\0") if name}
+    walked = set(SCANNED)
+
+    assert walked - tracked == set(), f"the walk scans files git does not publish: {sorted(walked - tracked)}"
+    assert tracked - walked == set(), f"git publishes files the walk does not scan: {sorted(tracked - walked)}"
