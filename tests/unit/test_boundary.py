@@ -11,6 +11,7 @@ closure nobody opens.
 from __future__ import annotations
 
 import ast
+import hashlib
 import importlib
 import pathlib
 import re
@@ -21,20 +22,45 @@ import pytest
 
 REPOSITORY = pathlib.Path(__file__).resolve().parents[2]
 
-#: Everything this repository PUBLISHES. ⚠ THE SET USED TO BE `src/` AND `nix/`
-#: ALONE, and a planted leak in `flake.nix` passed all 28 tests - while
-#: `examples/` breached the rule at the time it was written. A boundary mechanism
-#: that does not cover the files a reader opens first is a mechanism with a hole
-#: in exactly the place prose gets written.
-#:
-#: `tests/` is excluded because this file must be able to write the patterns down
-#: in order to search for them.
-SCANNED = sorted(
-    path
-    for pattern in ("*.py", "*.nix", "*.toml", "*.md")
-    for path in REPOSITORY.rglob(pattern)
-    if "/tests/" not in f"/{path.relative_to(REPOSITORY)}" and not path.relative_to(REPOSITORY).parts[0].startswith(".")
-)
+
+def _tracked() -> list[pathlib.Path]:
+    """Every file git tracks, which is exactly what a push publishes.
+
+    ⚠ NOT A GLOB OVER FOUR EXTENSIONS, and the first version was. It scanned
+    `*.py`, `*.nix`, `*.toml` and `*.md`, so a name planted in `LICENSE`,
+    `devenv.yaml`, `.gitignore` or either lock file went straight through while
+    `README.md` claimed the mechanism covered "every published file". The set a
+    push publishes is the set git tracks, so that is the set asked.
+    """
+    listing = subprocess.run(
+        ["git", "-C", str(REPOSITORY), "ls-files", "-z"],
+        capture_output=True,
+        check=True,
+    )
+    return sorted(REPOSITORY / name for name in listing.stdout.decode().split("\0") if name)
+
+
+def _readable(path: pathlib.Path) -> str:
+    """A file's text, or empty for anything that is not text."""
+    try:
+        return path.read_text()
+    except (UnicodeDecodeError, OSError):
+        return ""
+
+
+#: This file must be able to write the patterns down in order to search for them.
+SELF = pathlib.Path(__file__).resolve()
+
+SCANNED = [path for path in _tracked() if path != SELF]
+
+#: ⚠ EXCLUDED FROM THE ADDRESS RULES ONLY, never from the name rules. A lock file
+#: is a machine-written record of where its own dependencies came from, so it is
+#: full of registry addresses by construction and asking it about hosts is asking
+#: the wrong question. A consumer's name cannot arrive in one by hand, and the
+#: name rules still read them.
+GENERATED = {"uv.lock", "flake.lock"}
+
+ADDRESSABLE = [path for path in SCANNED if path.name not in GENERATED]
 
 PYTHON_SOURCES = sorted((REPOSITORY / "src" / "mcp_packaging").rglob("*.py"))
 
@@ -47,25 +73,63 @@ OWN_NAMES = ("mcp-packaging", "mcp_packaging", "example-mcp", "example_mcp")
 #: roster into a PUBLIC repository, in the one file whose whole job is to keep
 #: operator facts out of it. The pattern catches every server in the family
 #: including ones that do not exist yet, and it names none of them.
-SIBLING_SERVER = re.compile(rf"\b(?!(?:{'|'.join(OWN_NAMES)})\b)[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*[-_]mcp\b")
-
-#: This layer opens no outbound connection and integrates with nothing, so a URL
-#: naming a LITERAL REMOTE HOST in its published sources is either an upstream it
-#: must not know or dead prose.
 #:
-#: ⚠ THREE AUTHORITIES ARE ALLOWED, AND THE FIRST TWO ARE WHY THIS IS A REGEX
-#: RATHER THAN A GREP FOR "http". The checks build addresses out of the
-#: consumer's own spec (`http://${...}`) and the session probe out of its shell
-#: arguments (`http://$host:$port`) - those are the layer reaching a machine it
-#: was POINTED AT, which is the whole job. Loopback is allowed for the same
-#: reason. A literal remote name is the thing that can only be an upstream.
+#: `IGNORECASE`, because the first pattern was `[a-z]`-only and `The reference another-server`
+#: at the start of a sentence walked past it.
+SIBLING_SERVER = re.compile(
+    rf"\b(?!(?:{'|'.join(OWN_NAMES)})\b)[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*[-_]mcp\b",
+    re.IGNORECASE,
+)
+
+#: ⚠ HASHED, BECAUSE A PATTERN CANNOT SEE A BARE VENDOR NAME AND A LIST CANNOT BE
+#: PUBLISHED. Dropping the roster closed a publication hole and opened a coverage
+#: one: `the reference consumer`, `the prior art` and `an-upstream-host` written WITHOUT the `-mcp` suffix went
+#: through a pattern the roster had caught. Salted digests catch the exact token
+#: and disclose nothing - a reader of this file learns that five words are
+#: forbidden and cannot learn which.
+#:
+#: The refusal therefore cannot name the word. It names the FILE and the position,
+#: which is enough: whoever just wrote it knows which word it was.
+_SALT = "REDACTED-SALT"
+FORBIDDEN_DIGESTS = frozenset(
+    {
+        "REDACTED-DIGEST-1",
+        "REDACTED-DIGEST-2",
+        "REDACTED-DIGEST-3",
+        "REDACTED-DIGEST-4",
+        "REDACTED-DIGEST-5",
+    }
+)
+
+#: Words split on this, lowercased, before hashing.
+TOKEN = re.compile(r"[a-z0-9]+")
+
+#: A URL naming a LITERAL REMOTE HOST. Interpolated and loopback authorities are
+#: allowed: those are the layer reaching a machine it was POINTED AT, which is the
+#: job. A literal remote name can only be an upstream.
 URL = re.compile(
     r"https?://(?!"
-    r"\$|\{"  # an interpolation: an address the caller supplied
-    r"|127\.0\.0\.1|localhost|\[::1\]"  # this machine
-    r"|github\.com/chess-seventh/mcp-packaging"  # this repository's own forge
+    r"\$|\{"
+    r"|127\.0\.0\.1|localhost|\[::1\]"
+    r"|github\.com|pypi\.org|python\.org|nixos\.org"
     r")[^\s\)\"'`]+"
 )
+
+#: ⚠ A HOST WITHOUT A SCHEME, WHICH IS THE SHAPE OF THE LAST REAL LEAK. The check
+#: that was found grepping a journal for one consumer's API host wrote it bare -
+#: no `https://` in front of it - so a rule keyed on a scheme would have missed
+#: the very thing it was written for.
+BARE_HOST = re.compile(
+    r"\b(?!github\.com|pypi\.org|python\.org|nixos\.org)"
+    r"[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.(?:net|com|io|org|internal|local|lan)\b",
+    re.IGNORECASE,
+)
+
+#: A port in the range these servers are deployed in. The example's own is the one
+#: number this repository may write; anything else in the range is an allocation,
+#: and an allocation is an operator's.
+FLEET_PORT = re.compile(r"(?<![\d.])8[0-9]{3}(?![\d.])")
+OWN_PORT = "8799"
 
 #: A domain noun no packaging layer has a reason to spell.
 FORBIDDEN_WORDS = ("a-domain-reading",)
@@ -88,29 +152,70 @@ def test_no_published_file_names_another_server(source: pathlib.Path) -> None:
     Matched by SHAPE rather than against a list, so the rule holds for a consumer
     nobody has written yet and this file publishes no roster of its own.
     """
-    found = sorted(set(SIBLING_SERVER.findall(source.read_text())))
+    found = sorted({match.lower() for match in SIBLING_SERVER.findall(_readable(source))})
     assert found == [], f"{_relative(source)} names {found}, and this layer knows no other server"
 
 
 @pytest.mark.boundary
 @pytest.mark.parametrize("source", SCANNED, ids=_relative)
-def test_no_published_file_names_an_upstream(source: pathlib.Path) -> None:
-    """No URL outside this repository's own forge.
+def test_no_published_file_writes_a_forbidden_token(source: pathlib.Path) -> None:
+    """The bare vendor names a shape-based pattern cannot see.
 
-    ⚠ THE LAST REAL LEAK OUT OF THE EXTRACTION WAS EXACTLY THIS SHAPE: a check
-    asserted that the journal did not name one consumer's API host, hardcoded in a
-    file whose own header said it named none. It passed review twice. That address
-    is now a parameter the consumer supplies, and this is what keeps it one.
+    ⚠ THIS IS THE HALF THAT DROPPING THE ROSTER LOST. A pattern catches
+    `<name>-mcp`; it cannot catch the same vendor written on its own, which is how
+    the last real leak was written. Digests restore the coverage without restoring
+    the disclosure.
+
+    The refusal names the file and the token's position and NOT the token. That is
+    the whole point of hashing it, and it costs nothing in practice: whoever just
+    wrote the word can see which one it is.
     """
-    found = sorted(set(URL.findall(source.read_text())))
+    text = _readable(source).lower()
+    offences = [
+        match.start()
+        for match in TOKEN.finditer(text)
+        if hashlib.sha256((_SALT + match.group()).encode()).hexdigest()[:32] in FORBIDDEN_DIGESTS
+    ]
+    assert offences == [], (
+        f"{_relative(source)} writes a forbidden token at offset(s) {offences[:5]}. "
+        "It is a name this layer may not know; the message does not repeat it, because this "
+        "repository is public and the refusal would publish the very thing it refuses."
+    )
+
+
+@pytest.mark.boundary
+@pytest.mark.parametrize("source", ADDRESSABLE, ids=_relative)
+def test_no_published_file_names_an_upstream(source: pathlib.Path) -> None:
+    """No address of a machine outside this repository, with or without a scheme.
+
+    ⚠ THE LAST REAL LEAK OUT OF THE EXTRACTION WAS A BARE HOST: a check asserted
+    that a journal did not name one consumer's API host, written with no scheme in
+    front of it, in a file whose own header said it named none. It passed review
+    twice. A rule keyed on `https://` would have missed it, so there are two.
+    """
+    text = _readable(source)
+    found = sorted({*URL.findall(text), *BARE_HOST.findall(text)})
     assert found == [], f"{_relative(source)} names {found}, and this layer reaches nothing"
+
+
+@pytest.mark.boundary
+@pytest.mark.parametrize("source", ADDRESSABLE, ids=_relative)
+def test_no_published_file_writes_a_port_allocation(source: pathlib.Path) -> None:
+    """A port in the range these servers run in is an operator's allocation.
+
+    The example's own is the one number this repository may write. The rule exists
+    because the same fact was scrubbed from a module comment and left standing in
+    a reference document two commits later — the scrub was by hand, so it missed.
+    """
+    found = sorted({port for port in FLEET_PORT.findall(_readable(source)) if port != OWN_PORT})
+    assert found == [], f"{_relative(source)} writes {found}, and a port allocation is an operator's"
 
 
 @pytest.mark.boundary
 @pytest.mark.parametrize("source", SCANNED, ids=_relative)
 def test_no_published_file_names_a_domain_noun(source: pathlib.Path) -> None:
     """The few words that can only appear here by mistake."""
-    text = source.read_text().lower()
+    text = _readable(source).lower()
     found = [word for word in FORBIDDEN_WORDS if word in text]
     assert found == [], f"{_relative(source)} names {found}, and this layer knows no domain"
 

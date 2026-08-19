@@ -77,7 +77,8 @@ An architecture rule without a mechanism is a wish. Four of them here:
 
 | Layer | Mechanism | The question it answers |
 |---|---|---|
-| Naming | `tests/unit/test_boundary.py` pattern-matches **every published file** — `*.py`, `*.nix`, `*.toml`, `*.md`, including `flake.nix` and `examples/` | "does anything this repository publishes name another server, or an upstream?" |
+| Naming | `tests/unit/test_boundary.py` over **every file git tracks** — a shape pattern, plus salted digests for the bare names a pattern cannot see | "does anything this repository publishes name another server?" |
+| Address | the same file, over every tracked file except the two lock files | "does anything name a machine outside this repository, with or without a scheme, or a port allocation?" |
 | Dependency | the same file asks a **fresh interpreter** what one import costs | "does importing this drag in an MCP server or an HTTP client?" |
 | Surface | `checks.api-surface` | "does every symbol the published API names exist, and is anything exported that it does not name?" |
 | Posture | `nix/lib/hardening.nix` asserts at **evaluation** | "has a tightening been dropped, or added without anything able to read it back?" |
@@ -85,7 +86,15 @@ An architecture rule without a mechanism is a wish. Four of them here:
 The naming rule matches by **shape** — any `<something>-mcp` that is not this
 repository's own — rather than against a list of servers. A list would be a roster
 of private repositories, published, in the one file whose job is to keep operator
-facts out of a public tree.
+facts out of a public tree. The bare names a shape cannot catch are held as
+**salted digests**: the rule still fires on the exact token, and a reader learns
+only that some words are forbidden, never which. Its refusal names the file and
+the offset and deliberately not the word.
+
+The two lock files are exempt from the *address* rules and from nothing else. A
+lock file is a machine-written record of where its own dependencies came from, so
+it carries registry addresses by construction; a consumer's name cannot arrive in
+one by hand, and the naming rules still read them.
 
 The last one is worth naming: it used to live only inside a NixOS virtual-machine
 test, and half the boxes in this fleet cannot run one — so on those, the
@@ -107,6 +116,9 @@ nix build .#checks.x86_64-linux.hardening      # NixOS VM test  (needs KVM)
 
 Said out loud rather than left for a consumer to discover:
 
+- **No repository outside this tree consumes the flake.** `examples/example-mcp`
+  is called from this flake's own `outputs`, so the *export* is proven and the
+  *input* path is not. The first consuming repository is the first to walk it.
 - The **`stateDocument` branch** of the service and deployment checks — restart
   survival, power-cut survival, and the unwritable-store node — is *evaluated* on
   every run but never *executed* here, because the example consumer persists

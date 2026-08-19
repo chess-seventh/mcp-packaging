@@ -175,6 +175,16 @@ pkgs.testers.runNixOSTest {
   };
 
   testScript = ''
+    ${lib.optionalString (!(spec ? upstreamJournalMarker)) ''
+      # ⚠ PRINTED FIRST, AND BOTH PARTS OF THAT ARE FIXES. It lived inside the
+      # `keepsState` arm, so a consumer declaring neither field was told about one
+      # omission and never the other; and it then lived at the END of the script,
+      # where it reaches the log only on a run that already passed - so the one
+      # thing a FAILING run most needs to say about itself was the one thing it
+      # could not. A skipped assertion that does not print is the whole failure
+      # mode these lines exist for.
+      print("NOT ASSERTED: the journal names no upstream - this consumer declares no upstreamJournalMarker")
+    ''}
     start_all()
 
     defaults.wait_for_unit("${spec.name}.service")
@@ -413,14 +423,5 @@ pkgs.testers.runNixOSTest {
           print("NOT ASSERTED: an unwritable store - this consumer declares no stateDocument, so its probe has no write path to break")
         ''
     }
-    ${lib.optionalString (!(spec ? upstreamJournalMarker)) ''
-      # ⚠ PRINTED OUT HERE, NOT INSIDE THE BRANCH ABOVE. This line used to live
-      # inside the `keepsState` arm, so a consumer that declared no
-      # `upstreamJournalMarker` AND no `stateDocument` was told about the second
-      # omission and never about the first. A skipped assertion that does not
-      # print is the whole failure mode this repository writes these lines for,
-      # reproduced inside the mechanism meant to prevent it.
-      print("NOT ASSERTED: the journal names no upstream - this consumer declares no upstreamJournalMarker")
-    ''}
   '';
 }
