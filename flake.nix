@@ -236,6 +236,13 @@
             api = mcpPackagingLib;
           };
 
+          # The build-system escape hatch is general, proven with a build system
+          # this repository neither uses nor defaults to. Evaluation only.
+          build-system-hook = import ./nix/checks/build-system-hook.nix {
+            inherit pkgs;
+            inherit (pkgs) lib;
+          };
+
           # The Python half, run from the same lock the package is built from.
           unit-tests = import ./nix/checks/unit-tests.nix {
             inherit pkgs;

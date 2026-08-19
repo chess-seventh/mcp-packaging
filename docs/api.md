@@ -60,13 +60,37 @@ and omitting it failed at evaluation.
 ```text
 { pkgs, workspaceRoot, distributionName, consoleScriptName, entryPoint,
   pythonGeneration ? "3.12", sourcePreference ? "wheel",
-  packagesNeedingSetuptools ? [ ], dependencies ? null, meta }
+  packagesNeedingBuildSystems ? { }, dependencies ? null, meta }
 ```
 
 Builds a closed Python environment from `workspaceRoot`'s own `uv.lock`, then
 asserts in a `runCommand` that the installed `consoleScriptName` routes through
 `entryPoint`. **The assertion is the point** — a flake naming a command reads
 identically whether or not the build puts that command anywhere.
+
+⚠ **`packagesNeedingBuildSystems` replaces `packagesNeedingSetuptools`, and the
+replacement is a breaking change with nothing to break.** The old argument took a
+list of names and applied the literal `{ setuptools = [ ]; }` to each; the new one
+is an attribute set from distribution name to a uv2nix build-system spec, so it
+can say *which*:
+
+```nix
+packagesNeedingBuildSystems = { mcp-packaging = { hatchling = [ ]; }; };
+```
+
+**Every external consumer needs exactly that line**, and until L185 no argument
+on this page could produce it. Consumed the only way an external repository can —
+as a **git source** — this layer has neither an sdist nor a wheel entry in a
+consumer's `uv.lock`, so `sourcePreference` has nothing to prefer, uv2nix builds
+it from its own tree, and its `hatchling` backend is not importable in the
+isolated environment: `ModuleNotFoundError: No module named 'hatchling'`. The old
+hatch supplied setuptools. Found by the first repository to walk the input path.
+The old argument had no call site anywhere, so it is replaced rather than kept
+beside its successor.
+
+`checks.build-system-hook` holds the generality, and deliberately proves it with
+a build system this repository neither uses nor defaults to — proving the hatch
+with `hatchling` would only show that the new default is the new right answer.
 
 `dependencies` is for one case only: a uv **workspace**, where the lock's default
 dependency set belongs to the root rather than to the member being built. Pass
