@@ -37,11 +37,31 @@
   # than something compiled out of an unpinned toolchain.
   sourcePreference ? "wheel",
 
-  # Packages published as source distributions that call setuptools without
-  # declaring it. Each entry supplies a MISSING BUILD SYSTEM and never changes a
-  # version - that distinction is what keeps the lock file the only thing
-  # deciding what lands in the closure.
-  packagesNeedingSetuptools ? [ ],
+  # Packages whose build backend is not resolvable from the lock file, as an
+  # attribute set from distribution name to a uv2nix build-system spec:
+  # `{ mcp-packaging = { hatchling = [ ]; }; }`. Each entry supplies a MISSING
+  # BUILD SYSTEM and never changes a version - that distinction is what keeps the
+  # lock file the only thing deciding what lands in the closure.
+  #
+  # ⚠ THIS REPLACES `packagesNeedingSetuptools`, WHICH COULD NOT FIX THE CASE IT
+  # WAS MOST NEEDED FOR. That argument took a list of names and applied the
+  # literal `{ setuptools = [ ]; }` to each. Consumed from a GIT source - the
+  # only route an external repository has - this layer has neither an sdist nor a
+  # wheel entry in a consumer's lock, so nothing says what to build it with, and
+  # its own `hatchling` backend is not importable in the isolated environment.
+  # The escape hatch supplied setuptools; this distribution builds with
+  # hatchling; so no argument the published API offered could build the layer
+  # from outside its own tree. Found by the first external consumer to take the
+  # input (L185); it is not named here, because the naming rule in the README
+  # applies to a comment exactly as it does to prose. A list of names cannot
+  # say WHICH build system, so the shape had to change and not only the
+  # default.
+  #
+  # The old argument had no call site anywhere - not in this flake, not in the
+  # example consumer, not in any consuming repository - so it is replaced rather
+  # than kept beside its own successor. Two arguments for one job is how the next
+  # reader ends up choosing the one that cannot help them.
+  packagesNeedingBuildSystems ? { },
 
   # WHICH distribution in the lock file this package closes over. Null means the
   # workspace's own default, which is the answer for a repository holding one
@@ -90,19 +110,12 @@ let
   workspace = uv2nix.lib.workspace.loadWorkspace { inherit workspaceRoot; };
   lockedOverlay = workspace.mkPyprojectOverlay { inherit sourcePreference; };
 
-  buildFixes =
-    final: prev:
-    builtins.listToAttrs (
-      map (
-        name:
-        lib.nameValuePair name (
-          prev.${name}.overrideAttrs (old: {
-            nativeBuildInputs =
-              (old.nativeBuildInputs or [ ]) ++ final.resolveBuildSystem { setuptools = [ ]; };
-          })
-        )
-      ) packagesNeedingSetuptools
-    );
+  # Its own file, so `nix/checks/build-system-hook.nix` can apply it to a stub
+  # package set and read back what reached `resolveBuildSystem`. A fix written
+  # inline here is reachable only by building something that needs it, which is
+  # how the hardcoded `setuptools` survived unnoticed until an external consumer
+  # arrived.
+  buildFixes = import ./buildFixes.nix { inherit packagesNeedingBuildSystems; };
 
   pythonSet = (pkgs.callPackage pyproject-nix.build.packages { inherit python; }).overrideScope (
     lib.composeManyExtensions [
@@ -123,7 +136,13 @@ in
 pkgs.runCommand "${distributionName}-${versionOf distributionName}"
   {
     inherit meta;
-    passthru = { inherit serverEnvironment; };
+    # ⚠ `pythonSet` IS EXPOSED SO THE WIRING CAN BE CHECKED, not as a general
+    # extension point. `checks.build-system-hook` reads a package back out of it
+    # and asserts the caller's build system actually landed on that package -
+    # which is the one thing testing the overlay in isolation cannot tell you.
+    # Sever the import two dozen lines above and every check in this repository
+    # still passed, until this line existed.
+    passthru = { inherit serverEnvironment pythonSet; };
   }
   ''
     set -euo pipefail

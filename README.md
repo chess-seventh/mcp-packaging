@@ -131,6 +131,7 @@ nix flake check                  # everything below
 nix build .#checks.x86_64-linux.example-server # the example consumer builds at all
 nix build .#checks.x86_64-linux.unit-tests     # the Python suite, no VM, seconds
 nix build .#checks.x86_64-linux.api-surface    # the published API, no VM, instant
+nix build .#checks.x86_64-linux.build-system-hook # the escape hatch stays general, evaluation only
 nix build .#checks.x86_64-linux.port-claims    # the endpoint guard, no VM, evaluation only
 nix build .#checks.x86_64-linux.secret-search  # a real system closure, no VM
 nix build .#checks.x86_64-linux.service        # NixOS VM test  (needs KVM)
@@ -142,9 +143,23 @@ nix build .#checks.x86_64-linux.hardening      # NixOS VM test  (needs KVM)
 
 Said out loud rather than left for a consumer to discover:
 
-- **No repository outside this tree consumes the flake.** `examples/example-mcp`
-  is called from this flake's own `outputs`, so the *export* is proven and the
-  *input* path is not. The first consuming repository is the first to walk it.
+- ⚠ **This bullet used to say no repository outside this tree consumes the flake,
+  and that the first consuming repository would be the first to walk the input
+  path. One has, and the path was broken.** A consuming repository took the input
+  on 2026-08-19 and could not build: consumed as a **git source** — the only route
+  an external repository has — this layer has neither an sdist nor a wheel entry
+  in a consumer's lock, so nothing said what to build it with, and no argument
+  the published API offered could say. L185 is that fix
+  (`packagesNeedingBuildSystems`). `examples/example-mcp` never met it because it
+  resolves as a uv **workspace** member, which is not a route any other
+  repository can take — so the export stays proven by the example, and the input
+  path was walked by a second repository building against this flake over the
+  network, once, by hand. **Nothing here keeps that true**, and this bullet says
+  so rather than borrowing the confidence of the checks around it: no check in
+  this repository can fetch itself as an external consumer. What `nix flake check` does hold is `build-system-hook`, which asserts the published argument
+  reaches the package it names — the mechanism, not the round trip. That
+  repository is deliberately not named here; the naming rule below is the
+  reason, and it applies to this bullet as much as to any other line.
 - The **`stateDocument` branch** of the service and deployment checks — restart
   survival, power-cut survival, and the unwritable-store node — is neither run
   nor **evaluated** here, because the example consumer persists nothing and Nix
