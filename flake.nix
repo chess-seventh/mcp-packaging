@@ -206,6 +206,21 @@
           # A repository that ships a factory its checks never run ships a claim
           # rather than an artefact.
           example-server = examplePackage;
+
+          # The published surface is a list that fails the build when it stops
+          # being true. Needs no builder feature, so it runs everywhere.
+          api-surface = import ./nix/checks/api-surface.nix {
+            inherit pkgs;
+            inherit (pkgs) lib;
+            api = mcpPackagingLib;
+          };
+
+          # The Python half, run from the same lock the package is built from.
+          unit-tests = import ./nix/checks/unit-tests.nix {
+            inherit pkgs;
+            inherit (pkgs) lib;
+            source = ./.;
+          };
         }
         // exampleChecks;
       }

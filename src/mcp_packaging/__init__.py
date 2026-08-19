@@ -1,9 +1,13 @@
 """The shared packaging layer for the MCP server fleet.
 
 It knows about MCP servers, sockets, headers, systemd units, Nix derivations and
-filesystem modes. It knows nothing about The reference consumer, The prior art, Bring, ICS, Another consumer,
-OAuth grants, measurements, or health data. **If a domain concept ever needs to
-enter it, that is the signal the abstraction is wrong, not a reason to widen it.**
+filesystem modes. It knows nothing about any integration this fleet runs, nor
+about the data one holds. **If a domain concept ever needs to enter it, that is
+the signal the abstraction is wrong, not a reason to widen it.**
+
+(The consumers are named in ADR-001, deliberately not here: `tests/unit/
+test_boundary.py` greps these sources for exactly those names, and a docstring
+listing them would be the one file that always fails its own rule.)
 
 That single rule (ADR-002) is what every module here is answerable to, and three
 mechanisms hold it rather than review alone:

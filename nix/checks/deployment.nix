@@ -148,9 +148,21 @@ pkgs.testers.runNixOSTest {
         ];
       };
 
-    # A store the service's own account cannot write through. The unit's state
-    # directory is mounted read-only for this unit alone, which is a machine-level
-    # fault rather than a mode the service could repair.
+  }
+  # A store the service's own account cannot write through. The unit's state
+  # directory is mounted read-only for this unit alone, which is a machine-level
+  # fault rather than a mode the service could repair.
+  #
+  # ⚠ ONLY FOR A CONSUMER THAT WRITES TO ITS STORE, and the example consumer is
+  # what found this. The scenario asserts a `store_write_path_broken` refusal,
+  # which only happens if the consumer's probe carries a `write_path_check` - and
+  # a consumer with nothing durable to keep has no write path to break. It is the
+  # same axis as `stateDocument`, so it is gated on the same field rather than on
+  # a second one nobody would remember to set.
+  #
+  # The NODE goes too, not just its assertions: a virtual machine booted to be
+  # asserted about zero times is several minutes of every consumer's gate.
+  // lib.optionalAttrs keepsState {
     unwritable =
       { ... }:
       {
@@ -354,45 +366,54 @@ pkgs.testers.runNixOSTest {
     # ------------------------------------------------------------------
     # A store the service cannot write stops it before it opens a socket
     # ------------------------------------------------------------------
-    unwritable.wait_for_unit("multi-user.target")
-    unwritable.wait_until_succeeds("systemctl is-failed --quiet ${spec.name}.service", timeout = 180)
-    store_refusal = unwritable.succeed("journalctl -u ${spec.name}.service --no-pager -o cat")
-
-    # finds the service failed naming the store
-    #
-    # The refusal names the check AND the path. A unit that fails without saying
-    # which store it could not write leaves an operator guessing between the
-    # state area, the credentials directory and the package.
-    assert "store_write_path_broken" in store_refusal, "the refusal does not name the check that refused"
-    assert "${spec.stateArea}" in store_refusal, "the refusal does not name the store it could not write"
-
-    # finds nothing listening
-    unwritable.fail("${pkgs.iproute2}/bin/ss -ltnH | grep -q ':${toString spec.defaultPort} '")
-
-    # finds the consumer's upstream was never contacted
-    #
-    # By CONSTRUCTION rather than by observation, and that is the stronger claim:
-    # ADR-004 section 8 makes the whole probe path unable to import an HTTP
-    # client, so the refusal above happened before anything that COULD reach the
-    # vendor was loaded. The observable half is that the process refused at the
-    # probe rather than at the transport - a transport refusal would mean the
-    # session had already been built.
-    assert "health.startup.refused" in store_refusal, (
-        "the process did not refuse at the startup probe, so it had already built a session that can reach the upstream"
-    )
     ${
-      if spec ? upstreamJournalMarker then
+      if keepsState then
         ''
-          # The observable half, and it is the consumer's own word: a string that could
-          # only appear in the journal if this server had reached the thing it
-          # integrates with. This layer cannot know it, so the consumer names it.
-          unwritable.fail(
-              "journalctl -u ${spec.name}.service --no-pager | grep -q '${spec.upstreamJournalMarker}'"
+          unwritable.wait_for_unit("multi-user.target")
+          unwritable.wait_until_succeeds("systemctl is-failed --quiet ${spec.name}.service", timeout = 180)
+          store_refusal = unwritable.succeed("journalctl -u ${spec.name}.service --no-pager -o cat")
+
+          # finds the service failed naming the store
+          #
+          # The refusal names the check AND the path. A unit that fails without saying
+          # which store it could not write leaves an operator guessing between the
+          # state area, the credentials directory and the package.
+          assert "store_write_path_broken" in store_refusal, "the refusal does not name the check that refused"
+          assert "${spec.stateArea}" in store_refusal, "the refusal does not name the store it could not write"
+
+          # finds nothing listening
+          unwritable.fail("${pkgs.iproute2}/bin/ss -ltnH | grep -q ':${toString spec.defaultPort} '")
+
+          # finds the consumer's upstream was never contacted
+          #
+          # By CONSTRUCTION rather than by observation, and that is the stronger claim:
+          # ADR-004 section 8 makes the whole probe path unable to import an HTTP
+          # client, so the refusal above happened before anything that COULD reach the
+          # vendor was loaded. The observable half is that the process refused at the
+          # probe rather than at the transport - a transport refusal would mean the
+          # session had already been built.
+          assert "health.startup.refused" in store_refusal, (
+              "the process did not refuse at the startup probe, so it had already built a session that can reach the upstream"
           )
+          ${
+            if spec ? upstreamJournalMarker then
+              ''
+                # The observable half, and it is the consumer's own word: a string that could
+                # only appear in the journal if this server had reached the thing it
+                # integrates with. This layer cannot know it, so the consumer names it.
+                unwritable.fail(
+                    "journalctl -u ${spec.name}.service --no-pager | grep -q '${spec.upstreamJournalMarker}'"
+                )
+              ''
+            else
+              ''
+                print("NOT ASSERTED: the journal names no upstream - this consumer declares no upstreamJournalMarker")
+              ''
+          }
         ''
       else
         ''
-          print("NOT ASSERTED: the journal names no upstream - this consumer declares no upstreamJournalMarker")
+          print("NOT ASSERTED: an unwritable store - this consumer declares no stateDocument, so its probe has no write path to break")
         ''
     }
   '';

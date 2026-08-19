@@ -68,7 +68,7 @@ source = ["mcp_packaging"]
 addopts = "--strict-markers --tb=short"
 markers = [
   "property: the claim is a universal invariant, not one example",
-  "real-io: exercises real filesystem I/O against a real directory",
+  "real_io: exercises real filesystem I/O against a real directory",
   "error: exercises an error, refusal or fault path",
   "boundary: guards the ADR-002 boundary rule - this layer knows no domain",
   "contract_shape_pure_function: contract shape - no observable mutation",

@@ -89,11 +89,11 @@ pkgs.testers.runNixOSTest {
     supplied.wait_for_open_port(${toString spec.defaultPort})
 
     # sends the shared secret with that request, and
-    # asks for the measurements this server offers and gets them.
+    # asks for the tools this server offers and gets them.
     #
     # The sandbox cannot reach the consumer's upstream, so what is proven is the CONTRACT:
     # a caller holding the secret is admitted and reaches the tool surface, and
-    # the surface names the measurements this server offers.
+    # the surface names every tool the spec declares.
     # ⚠ THIS USED TO ASSIGN curl's OUTPUT TO A VARIABLE NOBODY READ, with a
     # trailing `|| true` swallowing its exit status, under a comment claiming the
     # caller "reaches the tool surface, and the surface names the measurements".
