@@ -1,0 +1,56 @@
+allow-missing-formatter = true
+verbose = 1
+walk = "git"
+
+[formatter.mdformat]
+command = "mdformat"
+excludes = []
+includes = ["*.md"]
+options = []
+
+# ⚠ NAMED `nixfmt`, NOT `nixfmt-classic`, AND THE NAME IS LOAD-BEARING. The
+# reference repository's config declares the formatter under the section name
+# `nixfmt-classic` while its shell supplies `pkgs.nixfmt` - the RFC-style tool -
+# and the whole tree is written in RFC style. treefmt takes the BINARY from
+# `command`, so that config happened to be correct only as long as the binary on
+# PATH was the RFC one; run with `nixfmt-classic` genuinely on PATH and it
+# reflows every Nix file in the repository into the pre-RFC style. With
+# `allow-missing-formatter = true` above, a box without the tool reports clean
+# either way, so nothing ever said which style the tree was in.
+[formatter.nixfmt]
+command = "nixfmt"
+excludes = []
+includes = ["*.nix"]
+options = []
+
+[formatter.ruff-check]
+command = "ruff"
+excludes = []
+includes = ["*.py", "*.pyi"]
+options = ["check", "--fix"]
+
+[formatter.ruff-format]
+command = "ruff"
+excludes = []
+includes = ["*.py", "*.pyi"]
+options = ["format"]
+
+[formatter.toml-sort]
+command = "toml-sort"
+excludes = []
+includes = ["*.toml"]
+options = ["-i"]
+
+# yamlfmt unwraps folded block scalars onto one line and drops the blank lines
+# between top-level keys, which is wrong for YAML a person hand-wraps.
+#
+# The exclusions below are inherited and currently match nothing: this
+# repository has one tracked YAML file, `devenv.yaml`, and neither a `docs/`
+# YAML nor a `.github/`. They are kept because both are the shapes this tree
+# would grow first, and a formatter that reflowed a workflow file on the day one
+# arrived would do it silently.
+[formatter.yamlfmt]
+command = "yamlfmt"
+excludes = ["docs/**/*.yaml", "docs/**/*.yml", ".github/workflows/*.yml"]
+includes = ["*.yaml", "*.yml"]
+options = []
