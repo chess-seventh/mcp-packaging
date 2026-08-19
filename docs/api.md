@@ -78,7 +78,7 @@ dependency set belongs to the root rather than to the member being built. Pass
 { spec } -> a NixOS module
 ```
 
-**Two guarantees are unconditional behaviour and must never become parameters**,
+**Three guarantees are unconditional behaviour and must never become parameters**,
 because leaving their ownership unstated is how a fleet ends up with five copies
 of a safety-critical assertion and one of them wrong:
 
@@ -93,6 +93,35 @@ of a safety-critical assertion and one of them wrong:
    "put quotation marks round it", and **never repeats the value it was given** —
    a refusal that echoes the offending definition performs a smaller version of
    the leak it is refusing.
+1. **The endpoint claim.** Every module contributes the address and port it
+   resolved to into `mcpPackaging.portClaims`, an **internal, invisible** option
+   declared by `nix/lib/portClaims.nix`, and two services claiming one endpoint
+   on a host are refused at evaluation with a message naming every claiming
+   service and both of its option paths. A consumer declares nothing and reads
+   nothing; the register exists only for its own assertion. Ruled buildable by
+   D-107 — an internal option a module contributes about *itself* is plumbing
+   inside this layer rather than fleet configuration.
+
+⚠ **The register is keyed on the address AND the port, never on the port alone**,
+and that is not a refinement. Two services on one port bound to two different
+addresses — loopback and a tailnet address, say — both bind, so a port-keyed
+register would refuse a host that works, and a guard that fires on a correct
+configuration is the one an operator learns to route around. The cost is stated
+rather than implied: two *spellings* of one address are two keys, so `127.0.0.1`
+against `localhost` still collides at run time and not here. Nix has no address
+resolver to close that with, and the every-interface guard above makes the same
+trade for the same reason.
+
+⚠ **It is a file rather than a block inside the factory**, because the module
+system deduplicates an import by its path: N factory-built modules on one host
+yield one register and one assertion per collision. Written inline, a collision
+between two services would print the same message twice.
+
+**`checks.port-claims` is this repository's own and is deliberately not part of
+`lib.mkChecks`.** A single consumer cannot collide with itself — the collision is
+between two *different* modules on one host — so the check belongs where two of
+them can be built, which is here, against two synthetic consumers, and not in the
+set a consumer runs over its own service.
 
 The hardening set is spliced with `//` rather than `mkMerge`. ⚠ **That does not
 make it un-weakenable, and this page used to say it did.** `//` decides how the
@@ -204,7 +233,7 @@ never built. Each line is a decision, not an omission.
 | Promised | Where | Status here |
 |---|---|---|
 | `lib/ports.nix`, a fleet port registry | ADR-002 §2 | **Not built, and correctly so.** ADR-007 §2 later rejected it: a map of one operator's services and ports is an operator-specific value, and publishing it falsifies the sentence ADR-001's publication decision rests on. ADR-002 §2 was never amended. |
-| The evaluation-time port-collision assertion | ADR-007 §3 | **Not built here.** ADR-007 flags it for the owner's judgement rather than assuming it, because it adds an option to a host's configuration and fleet configuration is out of scope. Batoned as its own lane. |
+| The evaluation-time port-collision assertion | ADR-007 §3 | **Built**, as `nix/lib/portClaims.nix`, after D-107 ruled that an internal option a module contributes about itself is plumbing inside this layer rather than fleet configuration. ⚠ **One deviation from the ADR, and it is deliberate:** the ADR says "map PORT to the services claiming it", which fires on a *correct* host running two services on one port at two different addresses. The register is keyed on the address and the port together instead. `checks.port-claims` holds both halves. |
 | `mcp_packaging.contracts`, a `Protocol` for driven adapters | ADR-002 §1 | **Not built.** The reference implementation has no such protocol to move — its ports (`TokenReader` / `TokenWriter`) are its own and stay there. Writing one here would be speculative generality on the component least allowed any. |
 | `mcp_packaging.serve` | ADR-002 §1 | **Already present** as `transport.serve_http` / `transport.serve_stdio`. |
 | Delete the dead `MCP_PATH` constant | ADR-002 §1 | **Kept, and unreferenced here.** This row used to say an acceptance suite read it; there is no acceptance suite in this repository, and `git grep` finds only its definition. It stays because it is part of the published surface — a consumer writing its own check needs to name the one route — and not because anything here uses it. |

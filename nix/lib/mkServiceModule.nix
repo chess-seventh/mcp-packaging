@@ -198,8 +198,25 @@ let
           The offending value is deliberately not repeated in this message.
         '';
   };
+
+  # The endpoint this service claims while it is enabled, in the ONE spelling the
+  # register is keyed by. The key's shape, why it carries the address as well as
+  # the port, and what that trade costs are documented once in `portClaims.nix`
+  # rather than restated here - a claim repeated in two files gets fixed in one.
+  #
+  # `withoutSpaces` is the same normalisation the every-interface guard uses, so
+  # a copy-pasted `"127.0.0.1 "` claims the endpoint it will actually bind rather
+  # than a key of its own.
+  claimedEndpoint = "${withoutSpaces cfg.listenAddress} port ${toString cfg.port}";
 in
 {
+  # The register, and the assertion that reads it back. A file rather than a
+  # block written out here, because the module system deduplicates an import by
+  # its path: every factory-built module on a host imports this same path and one
+  # instance results, so a collision is reported once rather than once per module
+  # that noticed it.
+  imports = [ ./portClaims.nix ];
+
   options = lib.setAttrByPath spec.optionPath {
     enable = lib.mkEnableOption "${spec.description} as a managed service";
 
@@ -290,6 +307,26 @@ in
 
           The shared secret is not a reason to widen it. There is exactly one secret and callers are checked but not told apart, so network reachability is the control that decides who gets to present it at all.
         '';
+      }
+    ];
+
+    # What this service claims, contributed into the shared register so the
+    # assertion in `portClaims.nix` can see every OTHER factory-built service on
+    # the same host. Inside `mkIf cfg.enable`, so a disabled unit - which binds
+    # nothing - claims nothing.
+    #
+    # ⚠ THE CONFIGURED VALUES, WHICH IS THE POINT AND NOT AN INCIDENTAL. `cfg.port`
+    # and `cfg.listenAddress` are what the host resolved, defaults and overrides
+    # together, so an operator who moves one service onto another's port is caught
+    # here. A registry of DEFAULTS - the shape ADR-007 section 2 rejected for a
+    # different reason - could not see that move at all.
+    mcpPackaging.portClaims.${claimedEndpoint} = [
+      {
+        service = spec.name;
+        address = withoutSpaces cfg.listenAddress;
+        inherit (cfg) port;
+        portOption = lib.showOption (spec.optionPath ++ [ "port" ]);
+        addressOption = lib.showOption (spec.optionPath ++ [ "listenAddress" ]);
       }
     ];
 

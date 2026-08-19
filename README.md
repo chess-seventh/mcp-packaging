@@ -131,6 +131,7 @@ nix flake check                  # everything below
 nix build .#checks.x86_64-linux.example-server # the example consumer builds at all
 nix build .#checks.x86_64-linux.unit-tests     # the Python suite, no VM, seconds
 nix build .#checks.x86_64-linux.api-surface    # the published API, no VM, instant
+nix build .#checks.x86_64-linux.port-claims    # the endpoint guard, no VM, evaluation only
 nix build .#checks.x86_64-linux.secret-search  # a real system closure, no VM
 nix build .#checks.x86_64-linux.service        # NixOS VM test  (needs KVM)
 nix build .#checks.x86_64-linux.deployment     # NixOS VM test  (needs KVM)
@@ -156,7 +157,7 @@ Said out loud rather than left for a consumer to discover:
 - `nix flake check` is run for `x86_64-linux`; `aarch64-linux` is declared
   supported and is not built on this hardware.
 
-**Three of the seven need a builder advertising virtualisation** and will not run
+**Three of the eight need a builder advertising virtualisation** and will not run
 on a box without `/dev/kvm`. That is why the closure secret search — the check
 that discharges the headline claim — is deliberately *not* a VM test, and why the
 unit suite runs on a bare interpreter.
@@ -196,7 +197,13 @@ keep the layer small:
 - **A fleet port registry.** A map of one operator's services and ports is an
   operator-specific value, and this repository is public. A consumer passes
   `defaultPort`; the registry, if wanted, belongs to whatever repository owns
-  fleet configuration.
+  fleet configuration. **What is here instead is strictly better and publishes
+  nothing:** every factory-built module contributes the address and port it
+  *actually resolved to* into an internal register, and two services claiming one
+  endpoint on a host fail at evaluation. It reads the configured value, so it
+  catches an operator moving one service onto another's port — which a written
+  registry cannot — and it holds no allocation of its own, because it is empty
+  until a host fills it.
 - **A generic OAuth2 client.** One consumer needs one, which is not a shared
   layer — it is a wrapper or a framework, and either breaks the boundary rule on
   the first commit.
