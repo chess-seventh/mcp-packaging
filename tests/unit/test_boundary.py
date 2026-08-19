@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import ast
 import importlib
+import os
 import pathlib
 import re
 import shutil
@@ -109,6 +110,14 @@ def _readable(path: pathlib.Path) -> str:
     for a real binary and that is fine: the rules look for ASCII names and
     addresses, and those survive the mapping byte for byte.
     """
+    if path.is_symlink():
+        # ⚠ THE TARGET STRING IS THE PUBLISHED BLOB. Git stores a symlink as its
+        # target and a forge renders it, so the target is text this repository
+        # publishes. `read_bytes` FOLLOWS the link instead: for a target outside
+        # the tree it raised, the handler below returned the empty string, and a
+        # name, a host and a port inside the target went through the whole gate.
+        # This history has already tracked a dangling symlink once.
+        return os.readlink(path)
     try:
         return path.read_bytes().decode("latin-1")
     except OSError:
@@ -196,15 +205,32 @@ BARE_HOST = re.compile(
     re.IGNORECASE,
 )
 
-#: ⚠ IPv6 HAS ITS OWN RULE BECAUSE THE FLEET THIS SERVES IS REACHED OVER IT. A
-#: rule that knew only dotted quads would miss every unique-local and every
-#: link-local address. Loopback and the unspecified address are this layer's own
-#: vocabulary, and so is the `[::]` spelling the module refuses by name.
+#: ⚠ IPv6 HAS ITS OWN RULE BECAUSE THE FLEET THIS SERVES IS REACHED OVER IT, and
+#: the FIRST version of that rule matched only fully-expanded addresses - which is
+#: to say none, because `::` compression is how every address is actually written.
+#: A compressed unique-local address passed; only the eight-group spelling was
+#: caught. The comment above it claimed it "would miss every unique-local and
+#: every link-local address" if it knew only dotted quads, and it missed them
+#: anyway - the rule that names a shape must not be written with one in it.
+#:
+#: Three branches: compressed with a head, compressed without one, and expanded.
+#: The expanded branch demands at least three groups so that a clock time - `12:30`
+#: - is not an address.
 IPV6_ADDRESS = re.compile(
-    r"(?<![0-9a-f:])(?!::1(?![0-9a-f:])|::(?![0-9a-f]))"
-    r"(?:[0-9a-f]{1,4}:){2,7}[0-9a-f]{1,4}(?![0-9a-f:])",
+    r"(?<![0-9a-z:])"
+    r"(?:"
+    r"[0-9a-f]{1,4}(?::[0-9a-f]{1,4})*::(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4})*)?"
+    r"|::(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4})*)?"
+    r"|(?:[0-9a-f]{1,4}:){2,7}[0-9a-f]{1,4}"
+    r")"
+    r"(?![0-9a-z:])",
     re.IGNORECASE,
 )
+
+#: This layer's own address vocabulary: loopback, the unspecified address, and
+#: every spelling of "every interface" that the module refuses BY NAME. A rule
+#: that flagged those would flag the guard that exists to refuse them.
+IPV6_ALLOWED = {"::", "::0", "::1", "0:0:0:0:0:0:0:0", "::ffff:0", "::ffff:0.0.0.0"}
 
 #: An address with no name at all. `BARE_HOST` cannot see one, and a fleet is
 #: reached by address at least as often as by name.
@@ -261,7 +287,12 @@ def test_no_published_file_names_an_upstream(source: pathlib.Path) -> None:
     """
     text = _readable(source)
     found = sorted(
-        {*URL.findall(text), *BARE_HOST.findall(text), *IP_ADDRESS.findall(text), *IPV6_ADDRESS.findall(text)}
+        {
+            *URL.findall(text),
+            *BARE_HOST.findall(text),
+            *IP_ADDRESS.findall(text),
+            *(found for found in IPV6_ADDRESS.findall(text) if found.lower() not in IPV6_ALLOWED),
+        }
     )
     assert found == [], f"{_relative(source)} names {found}, and this layer reaches nothing"
 
@@ -383,7 +414,7 @@ def test_no_published_path_carries_anything_the_rules_forbid() -> None:
         if SIBLING_SERVER.search(_relative(path))
         or BARE_HOST.search(_relative(path))
         or IP_ADDRESS.search(_relative(path))
-        or IPV6_ADDRESS.search(_relative(path))
+        or [found for found in IPV6_ADDRESS.findall(_relative(path)) if found.lower() not in IPV6_ALLOWED]
         or [port for port in FLEET_PORT.findall(_relative(path)) if port != OWN_PORT]
     )
     assert offences == [], f"these paths carry something this layer may not know: {offences}"

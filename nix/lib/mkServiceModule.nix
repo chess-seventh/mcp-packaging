@@ -40,7 +40,35 @@ let
     "0"
     "*"
     ""
+    # ⚠ THE EXPANDED AND V4-MAPPED SPELLINGS, ADDED AFTER BOTH WERE MEASURED
+    # ACCEPTED. `::0` was already on this list, so leaving its eight-group twin
+    # off was arbitrary rather than scoped - and the v4-mapped form binds every
+    # IPv4 interface on a dual-stack socket, which is the whole thing this guard
+    # exists to refuse.
+    "0:0:0:0:0:0:0:0"
+    "[0:0:0:0:0:0:0:0]"
+    "::ffff:0.0.0.0"
+    "[::ffff:0.0.0.0]"
   ];
+
+  # ⚠ COMPARED WITHOUT WHITESPACE. `"0.0.0.0 "` - one trailing space, the kind a
+  # copy-paste leaves - was accepted by an exact-match guard and binds exactly
+  # what the guard refuses. No valid listen address contains a space, so removing
+  # them cannot make a legitimate value fail.
+  withoutSpaces =
+    value:
+    builtins.replaceStrings
+      [
+        " "
+        "\t"
+        "\n"
+      ]
+      [
+        ""
+        ""
+        ""
+      ]
+      value;
 
   # `credentialsFile` names a FILE. It never carries the credential, and it is
   # never a Nix path literal.
@@ -233,7 +261,7 @@ in
     # already reachable by the time anybody reads a warning about it.
     assertions = [
       {
-        assertion = !(builtins.elem cfg.listenAddress everyInterfaceAddresses);
+        assertion = !(builtins.elem (withoutSpaces cfg.listenAddress) everyInterfaceAddresses);
         message = ''
           REFUSING TO BUILD: ${
             lib.showOption (spec.optionPath ++ [ "listenAddress" ])
