@@ -10,10 +10,11 @@
 #
 # ⚠ THE ANTI-VACUITY HALF IS THE POINT. A search that finds nothing proves
 # nothing until it has been shown capable of finding something: a wrong root, a
-# broken grep, or an absent system all report "clean". So the check PLANTS a
-# known value in a path inside the closure and requires the same search to find
-# it. If the planted value is not found, the check fails as loudly as if a real
-# secret had been - because at that moment it has no idea what it is measuring.
+# broken grep, or an absent system all report "clean". So the check runs its OWN
+# search over its OWN path list with one extra path known to hold the value, and
+# requires that path back. If it is not found, the check fails as loudly as if a
+# real secret had been - because at that moment it has no idea what it is
+# measuring.
 {
   pkgs,
   lib,
@@ -128,23 +129,38 @@ pkgs.runCommand "${spec.name}-secret-search"
       exit 1
     fi
 
-    # ANTI-VACUITY, second half: plant a known value where the search WILL look,
-    # and require this exact search to find it. Until that succeeds, a clean
-    # result says nothing about the closure and everything about the instrument.
-    planted=$(mktemp -d)/planted-value
-    echo "${builtins.head secretValues}" > "$planted"
-    if ! grep -rlF "${builtins.head secretValues}" "$planted" >/dev/null 2>&1; then
-      echo "REFUSING TO REPORT: the search cannot find a value planted directly in front of it." >&2
+    # ⚠ ONE SEARCH, USED TWICE. The instrument proof and the real question must
+    # be the SAME command over the SAME path list, or the proof vouches for
+    # something the real search does not do.
+    #
+    # It did not. The proof used to write a value into a fresh `mktemp -d` and
+    # grep THAT ONE PATH, while the real search greps every path named in the
+    # closure file. So it proved `grep -rlF` works and said nothing about the
+    # enumeration - a broken closure list, an unreadable path, a quoting fault in
+    # the expansion, all survived a proof that had never touched them.
+    search_for() {
+      value=$1
+      shift
+      grep -rlF "$value" "$@" 2>/dev/null | head -20
+    }
+
+    # ANTI-VACUITY, second half: the real path list PLUS one path known to hold
+    # the value. The search must find exactly that one.
+    plantedDirectory=$(mktemp -d)
+    echo "${builtins.head secretValues}" > "$plantedDirectory/planted-value"
+    if ! search_for "${builtins.head secretValues}" $(cat "$closure") "$plantedDirectory" \
+      | grep -qF "$plantedDirectory/planted-value"; then
+      echo "REFUSING TO REPORT: the search cannot find a value planted in the very list it walks." >&2
       echo "The instrument is broken, so its clean result would be meaningless." >&2
       exit 1
     fi
-    echo "Search instrument proven: it finds a planted value."
+    echo "Search instrument proven: it finds a planted value in the closure list itself."
 
     # Now the real question, asked of every path the running system can reach.
     found=0
     ${lib.concatMapStringsSep "\n" (value: ''
       echo "Searching the closure for one secret's value"
-      if grep -rlF ${lib.escapeShellArg value} $(cat "$closure") 2>/dev/null | head -20 > /tmp/hits; then
+      if search_for ${lib.escapeShellArg value} $(cat "$closure") > /tmp/hits; then
         if [ -s /tmp/hits ]; then
           echo "SECRET FOUND IN THE SYSTEM CLOSURE. Paths:" >&2
           cat /tmp/hits >&2

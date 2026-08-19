@@ -42,10 +42,13 @@ includes = ["*.toml"]
 options = ["-i"]
 
 # yamlfmt unwraps folded block scalars onto one line and drops the blank lines
-# between top-level keys. That is harmless for machine-written YAML and wrong for
-# the YAML a person reads here: the wave records under docs/, whose notes are
-# hand-wrapped prose. Excluded so that running treefmt over the repository is
-# safe, which is what makes it usable as a gate.
+# between top-level keys, which is wrong for YAML a person hand-wraps.
+#
+# The exclusions below are inherited and currently match nothing: this
+# repository has one tracked YAML file, `devenv.yaml`, and neither a `docs/`
+# YAML nor a `.github/`. They are kept because both are the shapes this tree
+# would grow first, and a formatter that reflowed a workflow file on the day one
+# arrived would do it silently.
 [formatter.yamlfmt]
 command = "yamlfmt"
 excludes = ["docs/**/*.yaml", "docs/**/*.yml", ".github/workflows/*.yml"]

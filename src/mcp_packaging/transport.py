@@ -151,7 +151,7 @@ def serve_http(
     verifier: Callable[[str | None], RejectionReason | None],
     ready_address: str | None = None,
 ) -> None:
-    """Bind the socket, then serve, then signal readiness.
+    """Bind the socket, then signal readiness, then serve.
 
     Readiness is signalled only once the socket is accepting, so
     ``systemctl is-active`` is not a lie. The socket is taken FIRST and the
@@ -301,11 +301,12 @@ async def _hold_the_session_manager_open(manager: Any, receive: Callable, send: 
 
 
 def _run_asgi(application: ASGIApplication, listener: socket.socket) -> None:
-    """Serve the application on an already-bound socket, and say we are ready.
+    """Serve the application on an already-bound socket.
 
-    The readiness notification goes out only after the socket is accepting, which
-    is what makes ``Type=notify`` honest. Nothing waiting on this unit races its
-    own subject.
+    It sends no readiness notification - :func:`serve_http` has already done that,
+    once the socket was accepting, which is what makes ``Type=notify`` honest.
+    This docstring used to claim the notification, which put the one line an
+    operator would go looking for in the wrong function.
     """
     import uvicorn
 

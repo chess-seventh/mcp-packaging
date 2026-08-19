@@ -4,10 +4,12 @@
 #
 # ⚠ NEEDS A BUILDER ADVERTISING VIRTUALISATION.
 #
-# WHY THIS CHECK EXISTS AT ALL. `mkServiceModule.nix` declares about twenty
-# hardening directives and states that they are applied WHOLE - "a directive
-# quietly left out is a weaker posture than this module promises". Nothing held
-# it to that. A directive deleted in a hurry, or silently dropped by a systemd
+# WHY THIS CHECK EXISTS AT ALL. `lib/hardening.nix` holds 28 tightening
+# directives and states that they are applied WHOLE - "a directive quietly left
+# out is a weaker posture than the module promises". Nothing held it to that.
+# (This header used to attribute both the set and the sentence to
+# `mkServiceModule.nix`, misquote the sentence, and call 28 "about twenty" -
+# while the same file, sixty lines down, correctly says the tables moved.) A directive deleted in a hurry, or silently dropped by a systemd
 # that no longer understands it, leaves a unit that starts, answers, passes every
 # other check in this repository, and is not the unit the module describes.
 #
@@ -328,7 +330,13 @@ pkgs.testers.runNixOSTest {
           "The planted file is gone, which means this assertion is measuring nothing."
       )
 
-      # finds every one of them readable by the service account alone
+      # finds every one of them private - mode 0600 or 0700
+      #
+      # ⚠ NOT "readable by the service account alone", which is what this phrase
+      # used to say. The loop below reads the MODE; the owner is read into a
+      # variable and never compared, so a root-owned 0600 file in the state area
+      # satisfies it. Ownership is asserted separately, on the state directory,
+      # where the unit's own `User=` makes it meaningful.
       for entry in walked:
           path, owner, file_mode = entry.rsplit(" ", 2)
           assert file_mode in ("600", "700"), f"{path} is mode {file_mode}, which is readable by somebody else"

@@ -218,7 +218,12 @@ def _make_private(path: Path, wanted: int) -> bool:
         Whether the entry was granting something before the change.
 
     Raises:
-        ModeNotHonoured: When the mode reads back as something else.
+        ModeNotHonoured: When the entry STILL grants something to group or other
+            after the change - the substrate accepted the call and did not apply
+            it. Not "when the mode reads back as something else": an already
+            private entry is never chmod-ed at all, and a filesystem that
+            normalises the exact bits while removing the shared ones has done the
+            job asked of it.
     """
     was_shared = _is_shared(path)
     if not was_shared:

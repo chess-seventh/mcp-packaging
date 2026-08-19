@@ -66,8 +66,12 @@ let
   pythonAttributeName = "python${builtins.replaceStrings [ "." ] [ "" ] pythonGeneration}";
   python = pkgs.${pythonAttributeName};
 
-  # Read as data, independently of uv2nix, so a parity check has an answer to
-  # compare against that was not produced by the thing it is checking.
+  # Read as data, independently of uv2nix. ⚠ THIS COMMENT USED TO SAY "so a
+  # parity check has an answer to compare against"; there is no parity check in
+  # this repository and `docs/api.md` records that the ADR-promised one was not
+  # built. What the read is FOR here is the derivation's name: the output is
+  # versioned from the lock rather than from whatever uv2nix resolved, so the two
+  # can be seen to disagree.
   lockFile = builtins.fromTOML (builtins.readFile (workspaceRoot + "/uv.lock"));
 
   versionOf =

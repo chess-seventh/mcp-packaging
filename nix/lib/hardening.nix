@@ -5,7 +5,7 @@
 # TWICE: once in the module in Nix spelling, once in the hardening check in
 # systemd's rendering, kept in agreement by hand. Two copies of a safety-critical
 # list, in two repositories once the layer is published, is the shape that ends
-# with five consumers and one of them quietly weaker.
+# with every consumer inheriting it and one of them quietly weaker.
 #
 # ⚠ ONE FILE, TWO INDEPENDENTLY-WRITTEN OBJECTS, AND THAT IS DELIBERATE. A naive
 # reading of "the module and the check read one object" would compute `posture`

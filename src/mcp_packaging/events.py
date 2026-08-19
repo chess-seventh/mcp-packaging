@@ -27,9 +27,16 @@ from typing import Any
 #: The field every event carries, naming which event it is.
 EVENT_FIELD = "event"
 
-#: How many further events of the same name were deliberately NOT written. The
-#: field exists so a cap is visible rather than silent: a record that stops writing
-#: and says nothing is a count that lies by omission.
+#: How many further events of the same name were deliberately NOT written.
+#:
+#: ⚠ VISIBLE IN THE IN-PROCESS RING, AND NOT IN THE JOURNAL. The comment here
+#: used to say "a cap is visible rather than silent" without that qualification,
+#: and it is not true of the thing an operator actually reads: the journal line
+#: is printed and flushed BEFORE any suppression can be counted onto it, and
+#: nothing re-emits. So journald shows the capped number of rejections and no
+#: sign that more were held. What the field gives is an in-process identity a
+#: CHECK can assert - written plus held equals arrived - which is worth having
+#: and is not the same claim.
 SUPPRESSED_FIELD = "suppressed"
 
 #: How many events the in-process ring remembers. Bounded because this process runs

@@ -5,9 +5,11 @@ ADR-002 §7. Two properties this module owes and a comment cannot supply:
 * the comparison is ``hmac.compare_digest``, pinned by an AST check because a
   ``compare_digest`` -> ``==`` mutant is behaviourally equivalent and survives
   mutation testing;
-* **every rejection class runs one comparison against a fixed-length dummy**, or
-  the three classes that short-circuit differ in work from the fourth and S4's
-  timing claim is unearned.
+* **every rejection class runs one comparison**, or the two classes that would
+  short-circuit differ in work from the one that does not, and the timing claim
+  is unearned. Two of the three classes compare a fixed-length dummy because
+  they have nothing real to compare; the third compares what the caller actually
+  presented.
 
 The shared layer never names an environment variable (ADR-002 §1); the variable
 holding the secret is the consumer's, and arrives as a value.
@@ -58,8 +60,13 @@ _DUMMY_EXPECTED = "\x01" * MINIMUM_TOKEN_LENGTH
 
 #: How many refusals are written per boot before the record starts holding them.
 #: A caller must not be able to fill the journal by presenting a wrong secret in a
-#: loop; the ones held are COUNTED on the last line written, so the cap is visible
-#: rather than silent and what was written plus what is held equals what arrived.
+#: loop.
+#:
+#: ⚠ The held ones are counted onto the last line of the IN-PROCESS RING, not
+#: onto the journal - that line was printed and flushed before the cap was
+#: reached. An operator reading journald sees the capped count and no marker;
+#: what the count buys is an identity a check can assert. See
+#: :data:`mcp_packaging.events.SUPPRESSED_FIELD`.
 RECORDED_REJECTION_LIMIT = 20
 
 #: The one refusal. Status, headers and body, spelled once so no class can differ.
@@ -99,9 +106,9 @@ class CallerCheckRequired(RuntimeError):
 def verify_bearer_token(presented: str | None, expected: str) -> RejectionReason | None:
     """Classify an Authorization header value against the secret in force.
 
-    Exactly ONE ``hmac.compare_digest`` runs on every path, including the three
-    classes that already know the answer. Without that, those three are refused
-    before any comparison happens at all and differ from the fourth in work by
+    Exactly ONE ``hmac.compare_digest`` runs on every path, including the two
+    classes that already know the answer. Without that, those two are refused
+    before any comparison happens at all and differ from the third in work by
     construction, which is the timing oracle the uniform response was supposed to
     close.
 
@@ -161,7 +168,8 @@ def unauthorized_response_bytes() -> bytes:
     """The whole refusal, as bytes, for a caller comparing one class against another.
 
     Spelled from the same constants the guard sends, so a byte comparison over the
-    four rejection classes is a comparison of what actually goes on the wire.
+    four caller SHAPES - three classes, since a wrong scheme and a malformed value
+    are one - is a comparison of what actually goes on the wire.
 
     Returns:
         Status, headers and body, rendered once.

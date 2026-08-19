@@ -12,7 +12,7 @@
 # HELD the secret.
 #
 # The shape to remember: the refusal path was asserted precisely (401, and the
-# four rejection classes byte-identical), and the SUCCESS path was asserted as
+# rejection classes byte-identical), and the SUCCESS path was asserted as
 # "not nothing". So the guard was proven and the thing it guards was not, and the
 # failure landed only on the callers the guard exists to admit.
 #

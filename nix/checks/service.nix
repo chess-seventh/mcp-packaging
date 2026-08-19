@@ -201,8 +201,22 @@ pkgs.testers.runNixOSTest {
     # The starved machine: no credentials file at all.
     #
     # finds the service failed
+    #
+    # ⚠ THE SECOND LINE USED TO END IN `|| true`, WHICH MAKES A COMMAND ALWAYS
+    # SUCCEED. So "finds the service failed" was carried entirely by the line
+    # above it, which proves only NOT ACTIVE - a unit that never started, or was
+    # stopped, or is still activating satisfies that. This file names a trailing
+    # `|| true` as the exact defect it fixed elsewhere, and then had one.
+    #
+    # `is-failed` PRINTS the state and exits non-zero when the unit is not
+    # failed, so the output is captured and compared. The `|| true` stays only to
+    # let the state be read on the path where it is not "failed".
     starved.wait_until_fails("systemctl is-active --quiet ${spec.name}.service")
-    starved.succeed("systemctl is-failed ${spec.name}.service || true")
+    starved_state = starved.succeed("systemctl is-failed ${spec.name}.service || true").strip()
+    assert starved_state == "failed", (
+        f"the unit reports {starved_state!r} rather than 'failed'. Not-active is not failed: a unit "
+        "that never started, or was stopped, or is still activating reads as not-active too."
+    )
 
     # finds the server's own first instruction never ran
     #
