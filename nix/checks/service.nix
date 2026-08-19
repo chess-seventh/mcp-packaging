@@ -23,50 +23,33 @@
   serverPackage,
 }:
 let
-  syntheticSharedSecret = "SYNTHETIC-SHARED-SECRET-3c7a1e9d5b2f4806a7c9e1b3d5f70284";
-  syntheticRefreshToken = "SYNTHETIC-REFRESH-TOKEN-9f2e4a7c1b8d3560e9a2c4f6b8d0172e";
-
-  credentialsFile = pkgs.writeText "${spec.name}-vm-credentials.env" ''
-    ${spec.clientIdVariable}=SYNTHETIC-CLIENT-ID-a2f0c7e4d9b6418fa3c5e7d9b1f4a6c8
-    ${spec.clientSecretVariable}=SYNTHETIC-CLIENT-SECRET-5d3b8f1a6c9e2470b8d4f6a1c3e5079b
-    ${spec.refreshTokenVariable}=${syntheticRefreshToken}
-    ${spec.sharedSecretVariable}=${syntheticSharedSecret}
-  '';
+  fixtures = import ../lib/fixtures.nix { inherit pkgs spec; };
+  syntheticSharedSecret = fixtures.sharedSecret;
 
   serviceOptions = {
     enable = true;
     package = serverPackage;
     listenAddress = spec.defaultListenAddress;
-    credentialsFile = "${credentialsFile}";
+    credentialsFile = "${fixtures.file}";
   };
 
   optionAttr = value: lib.setAttrByPath spec.optionPath value;
   sessionProbe = import ../lib/mkSessionProbe.nix { inherit pkgs spec; };
 
-  # The document the store holds, named once. The consumer's fact, not the
-  # layer's - the shared module never learns this file name.
-  storeDocumentName = "token.json";
-
-  # A schema-1 document the service accepts on the next start, so "the stored
-  # authorisation survived a restart" has an authorisation to be about. Written
-  # by the check because the sandbox cannot renew, and said out loud rather than
-  # implied: this proves the RESTART does not disturb the store, not that a
-  # rotation happened.
-  storedDocument = pkgs.writeText storeDocumentName (
-    builtins.toJSON {
-      schema = 1;
-      state = "committed";
-      seed_digest = builtins.hashString "sha256" syntheticRefreshToken;
-      refresh_token = syntheticRefreshToken;
-      access_token = "SYNTHETIC-ACCESS-TOKEN-not-a-real-value";
-      expires_at = 4102444800;
-      userid = "synthetic-userid";
-      previous_refresh_token = null;
-      superseded_seed_digests = [ ];
-      resume_attempts = 0;
-      rotated_at = 0;
-    }
-  );
+  # ⚠ THE STATE DOCUMENT IS THE CONSUMER'S, AND IT IS OPTIONAL. A server that
+  # persists a credential it must not lose declares `spec.stateDocument`, and the
+  # restart-survival block below runs. A server with nothing durable to keep -
+  # which is three of the four named future consumers - declares nothing, and the
+  # block is REPLACED BY A LINE SAYING SO rather than silently dropped.
+  #
+  # Silence is the failure mode this repository has met four times: a check whose
+  # assertions evaporate when a field is absent reports the same green as one
+  # that ran them. The `spec` fragment is the consumer's own document, verbatim,
+  # because only the consumer knows what its store holds - this layer owns the
+  # DURABILITY question and never the schema.
+  keepsState = spec ? stateDocument;
+  storeDocumentName = if keepsState then spec.stateDocument.name else "";
+  storedDocument = if keepsState then pkgs.writeText storeDocumentName spec.stateDocument.text else null;
 in
 pkgs.testers.runNixOSTest {
   name = "${spec.name}-service";
@@ -145,44 +128,60 @@ pkgs.testers.runNixOSTest {
     # write back over the seed even if it tried.
     supplied.fail("test -w /run/credentials/${spec.name}.service")
 
-    # finds the renewed authorisation written somewhere else entirely
-    #
-    # The renewed authorisation belongs in the state area, never beside the seed.
-    # Two lifetimes, two places.
-    supplied.succeed("test ! -e /run/credentials/${spec.name}.service/token.json")
+    ${
+      if keepsState then
+        ''
+          # finds the renewed authorisation written somewhere else entirely
+          #
+          # The renewed authorisation belongs in the state area, never beside the seed.
+          # Two lifetimes, two places.
+          supplied.succeed("test ! -e /run/credentials/${spec.name}.service/${storeDocumentName}")
 
-    # ⚠ SEEDED FIRST, AND ASSERTED TO BE THERE. The sandbox cannot renew, so this
-    # store is EMPTY - and the first version of this assertion compared
-    # `sha256sum … || echo absent` against itself, which is "absent" on both
-    # sides and passes over a store the service has wiped. That is the same
-    # measuring-nothing shape this check exists to catch, introduced by the
-    # commit that was fixing another one.
-    supplied.succeed(
-        "install -o ${spec.serviceAccount} -g ${spec.serviceAccount} -m 600"
-        " ${storedDocument} ${spec.stateArea}/${storeDocumentName}"
-    )
-    supplied.succeed("test -s ${spec.stateArea}/${storeDocumentName}")
-    before_restart = supplied.succeed("sha256sum ${spec.stateArea}/${storeDocumentName}").split()[0]
+          # ⚠ SEEDED FIRST, AND ASSERTED TO BE THERE. The sandbox cannot renew, so this
+          # store is EMPTY - and the first version of this assertion compared
+          # `sha256sum … || echo absent` against itself, which is "absent" on both
+          # sides and passes over a store the service has wiped. That is the same
+          # measuring-nothing shape this check exists to catch, introduced by the
+          # commit that was fixing another one.
+          supplied.succeed(
+              "install -o ${spec.serviceAccount} -g ${spec.serviceAccount} -m 600"
+              " ${storedDocument} ${spec.stateArea}/${storeDocumentName}"
+          )
+          supplied.succeed("test -s ${spec.stateArea}/${storeDocumentName}")
+          before_restart = supplied.succeed("sha256sum ${spec.stateArea}/${storeDocumentName}").split()[0]
 
-    # restarts the service
-    supplied.succeed("systemctl restart ${spec.name}.service")
-    supplied.wait_for_unit("${spec.name}.service")
-    supplied.wait_for_open_port(${toString spec.defaultPort})
+          # restarts the service
+          supplied.succeed("systemctl restart ${spec.name}.service")
+          supplied.wait_for_unit("${spec.name}.service")
+          supplied.wait_for_open_port(${toString spec.defaultPort})
 
-    # finds the stored authorisation unchanged
-    #
-    # A restart must not spend the grant. This is the property the whole lane
-    # exists to protect: a rotation costs a browser re-authorisation if it goes
-    # wrong, and a restart is not a reason to rotate.
-    #
-    # ⚠ BY CONTENT, over a document that is REALLY THERE. `test -d` on the state
-    # area was satisfied by a store the service had emptied; a digest with a
-    # fallback on both sides was satisfied by there being no document at all. The
-    # value being protected is the bytes, so the bytes are what is compared - and
-    # the file has to exist for the comparison to mean anything.
-    supplied.succeed("test -s ${spec.stateArea}/${storeDocumentName}")
-    after_restart = supplied.succeed("sha256sum ${spec.stateArea}/${storeDocumentName}").split()[0]
-    assert after_restart == before_restart, "the stored authorisation changed across a restart"
+          # finds the stored authorisation unchanged
+          #
+          # A restart must not spend the grant. This is the property the whole lane
+          # exists to protect: a rotation costs a browser re-authorisation if it goes
+          # wrong, and a restart is not a reason to rotate.
+          #
+          # ⚠ BY CONTENT, over a document that is REALLY THERE. `test -d` on the state
+          # area was satisfied by a store the service had emptied; a digest with a
+          # fallback on both sides was satisfied by there being no document at all. The
+          # value being protected is the bytes, so the bytes are what is compared - and
+          # the file has to exist for the comparison to mean anything.
+          supplied.succeed("test -s ${spec.stateArea}/${storeDocumentName}")
+          after_restart = supplied.succeed("sha256sum ${spec.stateArea}/${storeDocumentName}").split()[0]
+          assert after_restart == before_restart, "the stored authorisation changed across a restart"
+        ''
+      else
+        ''
+          # ⚠ NOT ASSERTED HERE, AND SAID OUT LOUD RATHER THAN DROPPED: this consumer
+          # declares no `spec.stateDocument`, so it keeps nothing across a restart that
+          # this check could compare. The restart itself is still exercised below.
+          print("NOT ASSERTED: restart survival of a stored credential - this consumer declares no stateDocument")
+
+          supplied.succeed("systemctl restart ${spec.name}.service")
+          supplied.wait_for_unit("${spec.name}.service")
+          supplied.wait_for_open_port(${toString spec.defaultPort})
+        ''
+    }
 
     # finds the service answering afterwards
     # The SAME probe, not a weaker one: "answering afterwards" has to mean what

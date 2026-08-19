@@ -23,17 +23,20 @@
   serverPackage,
 }:
 let
-  # Obviously-synthetic values. They are the thing searched for, so they must
-  # never be plausible as real credentials, and they must be long and distinctive
-  # enough that a chance substring cannot satisfy the search.
-  syntheticSecrets = {
-    "${spec.clientIdVariable}" = "SYNTHETIC-CLIENT-ID-a2f0c7e4d9b6418fa3c5e7d9b1f4a6c8";
-    "${spec.clientSecretVariable}" = "SYNTHETIC-CLIENT-SECRET-5d3b8f1a6c9e2470b8d4f6a1c3e5079b";
-    "${spec.refreshTokenVariable}" = "SYNTHETIC-REFRESH-TOKEN-9f2e4a7c1b8d3560e9a2c4f6b8d0172e";
-    "${spec.sharedSecretVariable}" = "SYNTHETIC-SHARED-SECRET-3c7a1e9d5b2f4806a7c9e1b3d5f70284";
-  };
+  # Obviously-synthetic values, from the SAME object the other three checks
+  # supply to their machines. They are the thing searched for, so they must never
+  # be plausible as real credentials and must be long and distinctive enough that
+  # a chance substring cannot satisfy the search - `lib/fixtures.nix` refuses at
+  # evaluation anything that is not.
+  #
+  # ⚠ ONE OBJECT, AND ADR-002 SECTION 4 REQUIRES IT: "if the search term and the
+  # supplied value are two objects, the search proves nothing". That held inside
+  # this file and nowhere else, because the other checks wrote their own copies
+  # of the same four lines. It now holds across all four.
+  fixtures = import ../lib/fixtures.nix { inherit pkgs spec; };
 
-  secretValues = lib.attrValues syntheticSecrets;
+  syntheticSecrets = fixtures.variables;
+  secretValues = fixtures.values;
 
   # ⚠ A RUNTIME PATH, NOT A STORE PATH, and the first version got this wrong in
   # a way that made the check fail against a module that was behaving correctly.

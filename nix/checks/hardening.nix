@@ -24,16 +24,20 @@
 #
 #   * DERIVED from the module (`unchecked`): a tightening this check cannot read
 #     back makes it refuse to run at all. Catches additions.
-#   * RECORDED here (`requiredPosture`): a tightening that must be present makes
-#     it refuse when the module stops setting it. Catches deletions.
+#   * RECORDED (`requiredPosture`): a tightening that must be present makes it
+#     refuse when the module stops setting it. Catches deletions.
 #
-# A recorded list is a sample when it is the ONLY source. Beside a derived one it
-# is the half that a derived list cannot be, and the pair is what makes "the whole
-# set rather than a sample of it" a property rather than a promise.
+# ⚠ BOTH RECORDS NOW LIVE IN `lib/hardening.nix`, AND BOTH QUESTIONS ARE ALSO
+# ASKED AT EVALUATION THERE. That is the change this extraction made, and it is
+# an improvement rather than a relocation: this check needs a builder advertising
+# virtualisation, and half the boxes in the fleet it serves have none - so on
+# those, the completeness bookkeeping simply never ran. It now runs wherever nix
+# evaluates, for every consumer, and the two assertions below are kept as the
+# backstop that reads the ACTUAL module the VM built rather than the table.
 #
 # The property names systemd reports are not always the directive names, and the
 # values are not always the values written. Both were MEASURED on a running unit
-# rather than assumed, and the two that need translating are named below.
+# rather than assumed.
 #
 # Each claim phrase is written NEXT TO the assertion that earns it.
 {
@@ -43,14 +47,8 @@
   serverPackage,
 }:
 let
-  syntheticSharedSecret = "SYNTHETIC-SHARED-SECRET-3c7a1e9d5b2f4806a7c9e1b3d5f70284";
-
-  credentialsFile = pkgs.writeText "${spec.name}-credentials.env" ''
-    ${spec.clientIdVariable}=SYNTHETIC-CLIENT-ID-a2f0c7e4d9b6418fa3c5e7d9b1f4a6c8
-    ${spec.clientSecretVariable}=SYNTHETIC-CLIENT-SECRET-5d3b8f1a6c9e2470b8d4f6a1c3e5079b
-    ${spec.refreshTokenVariable}=SYNTHETIC-REFRESH-TOKEN-9f2e4a7c1b8d3560e9a2c4f6b8d0172e
-    ${spec.sharedSecretVariable}=${syntheticSharedSecret}
-  '';
+  fixtures = import ../lib/fixtures.nix { inherit pkgs spec; };
+  syntheticSharedSecret = fixtures.sharedSecret;
 
   serviceModule = import ../lib/mkServiceModule.nix { inherit spec; };
 
@@ -58,111 +56,29 @@ let
     enable = true;
     package = serverPackage;
     listenAddress = spec.defaultListenAddress;
-    credentialsFile = "${credentialsFile}";
+    credentialsFile = "${fixtures.file}";
   };
 
   optionAttr = value: lib.setAttrByPath spec.optionPath value;
 
-  # The directives this check knows how to ask systemd about, and what systemd
-  # answers when they are applied. Everything here was read off a running unit;
-  # nothing is inferred from the manual.
+  # ⚠ THE FOUR TABLES ARE NOT WRITTEN HERE ANY MORE. They used to be, in
+  # systemd's rendering, while the module carried the same set in Nix spelling -
+  # two copies of a safety-critical list kept in agreement by hand, in two files
+  # that ADR-002 was about to put in two different repositories.
   #
-  # ⚠ A DIRECTIVE THE MODULE SETS AND THIS TABLE DOES NOT NAME IS A HOLE, and the
-  # test script refuses to run rather than passing over one - see the completeness
-  # assertion below. That refusal is the difference between this check and a
-  # sample.
-  booleanDirectives = [
-    "NoNewPrivileges"
-    "ProtectHome"
-    "PrivateTmp"
-    "PrivateDevices"
-    "ProtectKernelTunables"
-    "ProtectKernelModules"
-    "ProtectKernelLogs"
-    "ProtectControlGroups"
-    "ProtectClock"
-    "ProtectHostname"
-    "LockPersonality"
-    "RestrictRealtime"
-    "RestrictSUIDSGID"
-    "RestrictNamespaces"
-    "MemoryDenyWriteExecute"
-    "PrivateUsers"
-    "DynamicUser"
-  ];
-
-  # Directives whose reported value is a string, with the value systemd reports.
-  # `CapabilityBoundingSet` and `AmbientCapabilities` report the EMPTY string when
-  # the set is empty, which is the answer wanted and is indistinguishable from
-  # "not set" - so those two are asserted together with the capability probe in
-  # the script rather than by string equality alone.
-  stringDirectives = {
-    ProtectSystem = "strict";
-    ProtectProc = "invisible";
-    ProcSubset = "pid";
-    UMask = "0077";
-    SystemCallArchitectures = "native";
-    RestrictAddressFamilies = "AF_INET AF_INET6 AF_UNIX";
-    StateDirectoryMode = "0700";
-  };
-
-  # Directives the module sets that are NOT part of the tightening posture, so
-  # their absence from the two tables above is a decision rather than an
-  # oversight. The completeness assertion subtracts these by name.
-  notTightenings = [
-    "Type"
-    "NotifyAccess"
-    "User"
-    "Group"
-    "ExecStart"
-    "LoadCredential"
-    "Environment"
-    "StateDirectory"
-    "WorkingDirectory"
-    "Restart"
-    "RestartSec"
-    "ReadWritePaths"
-    "CapabilityBoundingSet"
-    "AmbientCapabilities"
-    "SystemCallFilter"
-  ];
-
-  # ⚠ THE RECORDED POSTURE. Every directive the module must still be setting.
-  # Removing a name from here is a deliberate weakening of what this service
-  # promises, and it should be as visible in a diff as removing the directive.
+  # Both halves now come from `lib/hardening.nix`, which holds them as data and
+  # asserts at EVALUATION that they agree: a directive dropped from the applied
+  # set while `required` still names it, or applied while no table can read it
+  # back, fails to evaluate by name. That is the completeness bookkeeping this
+  # script used to do, moved to where every consumer gets it without a builder
+  # that advertises virtualisation.
   #
-  # This list is written out rather than computed BECAUSE it must not follow the
-  # module: a baseline that moves with its subject records nothing.
-  requiredPosture = [
-    "NoNewPrivileges"
-    "ProtectHome"
-    "PrivateTmp"
-    "PrivateDevices"
-    "ProtectKernelTunables"
-    "ProtectKernelModules"
-    "ProtectKernelLogs"
-    "ProtectControlGroups"
-    "ProtectClock"
-    "ProtectHostname"
-    "LockPersonality"
-    "RestrictRealtime"
-    "RestrictSUIDSGID"
-    "RestrictNamespaces"
-    "MemoryDenyWriteExecute"
-    "PrivateUsers"
-    "DynamicUser"
-    "ProtectSystem"
-    "ProtectProc"
-    "ProcSubset"
-    "UMask"
-    "SystemCallArchitectures"
-    "RestrictAddressFamilies"
-    "StateDirectoryMode"
-    "CapabilityBoundingSet"
-    "AmbientCapabilities"
-    "SystemCallFilter"
-    "ReadWritePaths"
-  ];
+  # What is left HERE is the half only a running unit can answer: whether the
+  # tightening that is claimed is the tightening that is RUNNING.
+  inherit (import ../lib/hardening.nix) posture;
+
+  inherit (posture) booleanDirectives stringDirectives notTightenings;
+  requiredPosture = posture.required;
 
   # Syscalls the denied groups contain. Present in the resolved allow list would
   # mean a group was not denied after all. Chosen one per denied group so the

@@ -27,39 +27,20 @@
   serverPackage,
 }:
 let
-  syntheticSharedSecret = "SYNTHETIC-SHARED-SECRET-3c7a1e9d5b2f4806a7c9e1b3d5f70284";
-  syntheticRefreshToken = "SYNTHETIC-REFRESH-TOKEN-9f2e4a7c1b8d3560e9a2c4f6b8d0172e";
+  fixtures = import ../lib/fixtures.nix { inherit pkgs spec; };
+  syntheticSharedSecret = fixtures.sharedSecret;
 
-  credentialsFile = pkgs.writeText "${spec.name}-credentials.env" ''
-    ${spec.clientIdVariable}=SYNTHETIC-CLIENT-ID-a2f0c7e4d9b6418fa3c5e7d9b1f4a6c8
-    ${spec.clientSecretVariable}=SYNTHETIC-CLIENT-SECRET-5d3b8f1a6c9e2470b8d4f6a1c3e5079b
-    ${spec.refreshTokenVariable}=${syntheticRefreshToken}
-    ${spec.sharedSecretVariable}=${syntheticSharedSecret}
-  '';
-
-  # A schema-1 document the service will accept on the next start. Written by
-  # the check rather than by a renewal, because the sandbox cannot renew - and
-  # said out loud, because "the stored authorisation survived" is a claim about
-  # the STORE surviving, not about a rotation having happened.
+  # ⚠ THE STATE DOCUMENT IS THE CONSUMER'S, AND IT IS OPTIONAL. See the same note
+  # in `service.nix`: a server that persists a credential it must not lose
+  # declares `spec.stateDocument`, and the power-cut block below runs against its
+  # own document. A server with nothing durable to keep declares nothing, and the
+  # block is REPLACED BY A LINE SAYING SO rather than silently dropped.
   #
-  # `seed_digest` is the real SHA-256 of the seed in the credentials file, so the
-  # precedence rule reads CONTINUE rather than treating the document as a
-  # re-seed. Nix computes it here so the two cannot drift.
-  storedDocument = pkgs.writeText "token.json" (
-    builtins.toJSON {
-      schema = 1;
-      state = "committed";
-      seed_digest = builtins.hashString "sha256" syntheticRefreshToken;
-      refresh_token = syntheticRefreshToken;
-      access_token = "SYNTHETIC-ACCESS-TOKEN-not-a-real-value";
-      expires_at = 4102444800;
-      userid = "synthetic-userid";
-      previous_refresh_token = null;
-      superseded_seed_digests = [ ];
-      resume_attempts = 0;
-      rotated_at = 0;
-    }
-  );
+  # The document's CONTENT is the consumer's, verbatim - only it knows what its
+  # store holds, and a shared layer that knew would have learned a domain schema.
+  keepsState = spec ? stateDocument;
+  storeDocumentName = if keepsState then spec.stateDocument.name else "";
+  storedDocument = if keepsState then pkgs.writeText storeDocumentName spec.stateDocument.text else null;
 
   # A pinned address that is NOT the every-interface set and NOT the default, so
   # "the operator chose this on purpose" and "the default is loopback" cannot be
@@ -78,7 +59,7 @@ let
   serviceOptions = {
     enable = true;
     package = serverPackage;
-    credentialsFile = "${credentialsFile}";
+    credentialsFile = "${fixtures.file}";
   };
 
   optionAttr = value: lib.setAttrByPath spec.optionPath value;
@@ -228,21 +209,34 @@ pkgs.testers.runNixOSTest {
     # ------------------------------------------------------------------
     # Power-cycling the box costs no re-authorisation
     # ------------------------------------------------------------------
-    # The store is seeded FIRST, because a power cut over an empty store proves
-    # nothing: an empty store is unchanged by everything.
-    defaults.succeed(
-        "install -o ${spec.serviceAccount} -g ${spec.serviceAccount} -m 600"
-        " ${storedDocument} ${spec.stateArea}/token.json"
-    )
-    # ⚠ FLUSHED ON PURPOSE, and the first run of this check is why. `install`
-    # leaves the bytes in the page cache, and a power cut does not write the page
-    # cache out - so the document vanished and the assertion below failed against
-    # a store that had never really held it. The service's own write fsyncs the
-    # file AND the directory before it returns (ADR-004 section 3), which is
-    # exactly the difference; planting a document without that would be testing a
-    # weaker write than the one that ships.
-    defaults.succeed("sync ${spec.stateArea}/token.json ${spec.stateArea}")
-    before = defaults.succeed("sha256sum ${spec.stateArea}/token.json").split()[0]
+    ${
+      if keepsState then
+        ''
+          # The store is seeded FIRST, because a power cut over an empty store proves
+          # nothing: an empty store is unchanged by everything.
+          defaults.succeed(
+              "install -o ${spec.serviceAccount} -g ${spec.serviceAccount} -m 600"
+              " ${storedDocument} ${spec.stateArea}/${storeDocumentName}"
+          )
+          # ⚠ FLUSHED ON PURPOSE, and the first run of this check is why. `install`
+          # leaves the bytes in the page cache, and a power cut does not write the page
+          # cache out - so the document vanished and the assertion below failed against
+          # a store that had never really held it. The service's own write fsyncs the
+          # file AND the directory before it returns (ADR-004 section 3), which is
+          # exactly the difference; planting a document without that would be testing a
+          # weaker write than the one that ships.
+          defaults.succeed("sync ${spec.stateArea}/${storeDocumentName} ${spec.stateArea}")
+          before = defaults.succeed("sha256sum ${spec.stateArea}/${storeDocumentName}").split()[0]
+        ''
+      else
+        ''
+          # ⚠ NOT ASSERTED, AND SAID OUT LOUD: this consumer declares no
+          # `spec.stateDocument`, so it keeps nothing across a power cut that this check
+          # could compare. The power cut itself still runs - a service that does not come
+          # back up unaided is a failure whether or not it stores anything.
+          print("NOT ASSERTED: power-cut survival of a stored credential - this consumer declares no stateDocument")
+        ''
+    }
 
     # power-cycles that machine
     #
@@ -257,12 +251,16 @@ pkgs.testers.runNixOSTest {
     defaults.wait_for_unit("${spec.name}.service")
     defaults.wait_for_open_port(${toString spec.defaultPort})
 
-    # finds the stored authorisation unchanged
-    #
-    # By CONTENT. "The directory still exists" is satisfied by a store the
-    # service emptied, and the value being protected is the bytes.
-    after = defaults.succeed("sha256sum ${spec.stateArea}/token.json").split()[0]
-    assert after == before, "the stored authorisation changed across a power cut"
+    ${
+      lib.optionalString keepsState ''
+        # finds the stored authorisation unchanged
+        #
+        # By CONTENT. "The directory still exists" is satisfied by a store the
+        # service emptied, and the value being protected is the bytes.
+        after = defaults.succeed("sha256sum ${spec.stateArea}/${storeDocumentName}").split()[0]
+        assert after == before, "the stored authorisation changed across a power cut"
+      ''
+    }
 
     # and the service answering afterwards, which is what makes the survival
     # useful rather than merely tidy.
@@ -382,6 +380,20 @@ pkgs.testers.runNixOSTest {
     assert "health.startup.refused" in store_refusal, (
         "the process did not refuse at the startup probe, so it had already built a session that can reach the upstream"
     )
-    unwritable.fail("journalctl -u ${spec.name}.service --no-pager | grep -q 'an-upstream-host'")
+    ${
+      if spec ? upstreamJournalMarker then
+        ''
+          # The observable half, and it is the consumer's own word: a string that could
+          # only appear in the journal if this server had reached the thing it
+          # integrates with. This layer cannot know it, so the consumer names it.
+          unwritable.fail(
+              "journalctl -u ${spec.name}.service --no-pager | grep -q '${spec.upstreamJournalMarker}'"
+          )
+        ''
+      else
+        ''
+          print("NOT ASSERTED: the journal names no upstream - this consumer declares no upstreamJournalMarker")
+        ''
+    }
   '';
 }
