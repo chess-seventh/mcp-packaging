@@ -64,9 +64,15 @@
       # and nowhere else. A layer whose factories are unreachable from outside is
       # a layer with one consumer, whatever its files say.
       #
-      # NOT per-system. Every factory takes the consumer's own `pkgs`, so the
-      # functions themselves are system-agnostic and a consumer can call them
-      # from wherever it already has a package set.
+      # NOT per-system: a consumer calls these from wherever it already has a
+      # package set. The four that build something take that set as `pkgs`;
+      # `mkServiceModule` takes only `spec` and gets `pkgs` from the module
+      # system when a host evaluates it, so handing it one is an error.
+      #
+      # ⚠ THIS COMMENT SAID "every factory takes the consumer's own `pkgs`" and
+      # was false about the factory defined twenty lines below it. The README
+      # carried the same sentence and was corrected a commit earlier; a claim
+      # repeated in two files gets fixed in one.
       mcpPackagingLib = {
         # Build a closed Python environment from the consumer's own uv.lock, and
         # assert the installed console script routes through the declared entry

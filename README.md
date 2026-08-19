@@ -145,10 +145,12 @@ Said out loud rather than left for a consumer to discover:
   is called from this flake's own `outputs`, so the *export* is proven and the
   *input* path is not. The first consuming repository is the first to walk it.
 - The **`stateDocument` branch** of the service and deployment checks — restart
-  survival, power-cut survival, and the unwritable-store node — is *evaluated* on
-  every run but never *executed* here, because the example consumer persists
-  nothing. The first consumer that declares a `stateDocument` is the first to run
-  it. Each skip prints a `NOT ASSERTED` line naming itself.
+  survival, power-cut survival, and the unwritable-store node — is neither run
+  nor **evaluated** here, because the example consumer persists nothing and Nix
+  does not evaluate the arm it did not take. This paragraph claimed it was
+  evaluated; it is not, and the difference is the whole guard: a typo inside
+  those blocks stays green here and surfaces in the first consumer that declares
+  a `stateDocument`. Each skip prints a `NOT ASSERTED` line naming itself.
 - The closure secret search runs against **one** secret here, not the several a
   consumer with a full credentials file supplies.
 - `nix flake check` is run for `x86_64-linux`; `aarch64-linux` is declared

@@ -25,8 +25,9 @@ ignores the rest, so a field added for a fourth consumer changes no call site.
 | `name` | string | The systemd unit name and the service account name. |
 | `description` | string | The unit description, and the option's enable text. |
 | `optionPath` | list of string | Where the module's options live, e.g. `[ "services" "example-mcp" ]`. **Explicit, not derived from `name`** — a consumer whose option path differs from its unit name is legitimate, and deriving it silently forbids that. |
+| `distributionName` | string | The distribution in the consumer's `uv.lock`, used to version the build output. ⚠ **This row was missing while the page called itself "the whole record"** — a consumer building its spec from it got `called without required argument 'distributionName'`. |
 | `consoleScriptName` | string | The one command the wheel installs. |
-| `entryPoint` | string | `module:function`. Exactly one; the build refuses a package that does not route through it. |
+| `entryPoint` | string | `module:function`. Exactly one; the build refuses a package that does not route through it. Read by `mkServerPackage` as its own argument rather than off the spec — a consumer keeps it in the record because that is where the fact belongs, not because a factory reaches for it there. |
 | `stateDirectory` | string | Passed to `StateDirectory=`, so it resolves under `/var/lib`. |
 | `stateArea` | string | The absolute path the above resolves to. Derive it — two spellings of one fact that disagree is a unit and a check pointing at different directories. |
 | `serviceAccount` | string | The fixed system account. **Not `DynamicUser`** — that moves the state area behind `/var/lib/private/`, so a restart-survival assertion reads a symlink and passes whether or not anything survived. |
@@ -37,13 +38,13 @@ ignores the rest, so a field added for a fourth consumer changes no call site.
 | `tokenStoreVariable` | string | The variable name the unit sets to `stateArea`, so the server is told where its own state lives. ⚠ **This row was in the Optional table and the module reads it unconditionally** — a consumer following the published API and omitting it died at evaluation with `attribute 'tokenStoreVariable' missing`. Found by an external consumer flake, not by anything in this repository, because the example declares it. |
 | `credentialsFileExample` | string | ⚠ **Renders into the option description, which lands in the world-readable Nix store on every build.** It must be unmistakably a placeholder; put the word `example` in the path itself so the file name alone answers the question. |
 | `toolNames` | list of string | The surface `mkSessionProbe` reads back BY NAME. Required, not optional: all three VM checks build a probe, so a consumer using `mkChecks` at all must supply it. `mkSessionProbe` **refuses to build on an empty list** — the surface loop is generated from it, so an empty one generates no checks and the probe would report a working surface on any `200`, silently. |
-| `meta` | attrs | Standard package meta for the build output. |
+| `meta` | attrs | Standard package meta for the build output. Like `entryPoint`, handed to `mkServerPackage` directly rather than read off the spec. |
 
 ### Optional, and each absence is reported rather than assumed
 
 Every field below is read through `spec ? field` or `spec.field or <default>`, so
 omitting one is a supported configuration rather than an evaluation error. ⚠ **The
-Required table above is the set the tree reads unconditionally** — that
+Required table above is the set a consumer must supply** — that
 correspondence is the contract, and it was wrong once: `tokenStoreVariable` sat
 here while `mkServiceModule` read it directly, so a consumer following this page
 and omitting it failed at evaluation.
@@ -195,9 +196,9 @@ never built. Each line is a decision, not an omission.
 | The evaluation-time port-collision assertion | ADR-007 §3 | **Not built here.** ADR-007 flags it for the owner's judgement rather than assuming it, because it adds an option to a host's configuration and fleet configuration is out of scope. Batoned as its own lane. |
 | `mcp_packaging.contracts`, a `Protocol` for driven adapters | ADR-002 §1 | **Not built.** The reference implementation has no such protocol to move — its ports (`TokenReader` / `TokenWriter`) are its own and stay there. Writing one here would be speculative generality on the component least allowed any. |
 | `mcp_packaging.serve` | ADR-002 §1 | **Already present** as `transport.serve_http` / `transport.serve_stdio`. |
-| Delete the dead `MCP_PATH` constant | ADR-002 §1 | **Kept.** It was dead in the prior art and is not dead now — the acceptance suite reads it to enumerate every route the guard must cover. |
+| Delete the dead `MCP_PATH` constant | ADR-002 §1 | **Kept, and unreferenced here.** This row used to say an acceptance suite read it; there is no acceptance suite in this repository, and `git grep` finds only its definition. It stays because it is part of the published surface — a consumer writing its own check needs to name the one route — and not because anything here uses it. |
 | Collapse the duplicate `TransportKind` / `events.Transport` enums | ADR-002 §1 | **Already one.** The duplicate did not survive into the code this moved from. |
-| `checks/version-parity.nix`, `checks/machine-support.nix` | ADR-002 §2 | **Not present in the tree that was moved.** Their content lives inside the four checks that are here. |
+| `checks/version-parity.nix`, `checks/machine-support.nix` | ADR-002 §2 | **Not present in the tree that was moved, and NOT discharged here.** This row used to claim their content lived inside the four checks; it does not — no version comparison and no platform assertion exists in any of them. Two ADR promises with nothing behind them, recorded rather than quietly counted as met. |
 | The four checks move "as-is" | ADR-002 §2 | **They could not.** Every one read three named fields that are an OAuth2 grant by construction, and two planted a credential document with a fixed schema. Moved as they stood they would fit only a server holding exactly that grant. Generalised onto `credentialsVariables` and `stateDocument`. |
 | A default port in the transport | prior art | **Dropped.** It was one server's port allocation; a shared default hands every other server a port already taken. `port` is a required argument instead. |
 | `ProbeCheck` as a closed enum | prior art | **Opened**, exactly as `EventName` already was. `store_corrupt` and `seed_rolled_back` left it — one is about a document only a consumer can parse, the other is one consumer's rotation semantics. |
