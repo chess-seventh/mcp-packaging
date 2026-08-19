@@ -103,6 +103,11 @@ directive back off the **running** unit and compares it against the declared
 table rather than against the merged one. A consumer that overrides a tightening
 ships a weaker unit and that check goes red naming the directive.
 
+⚠ That check is a NixOS virtual-machine test, so it needs a builder advertising
+virtualisation. A builder without one errors rather than passing, so there is no
+silent hole — but the posture is held by something a machine without KVM cannot
+run, and a consumer whose CI has none is relying on the declaration alone.
+
 There are **no `extraOptions` / `extraServiceConfig` / `extraEnvironment` /
 `extraAssertions` passthroughs.** ADR-002 §3 requires each to name the value it
 carries today and to be deleted before publication if it carries none. None

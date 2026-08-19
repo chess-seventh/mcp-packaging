@@ -101,8 +101,13 @@
         mkChecks = args: import ./nix/lib/mkChecks.nix args;
 
         # The tightening set as data, for a consumer that writes its own module
-        # and still wants this layer's posture. Read-only: the factory applies it
-        # unconditionally and a consumer cannot weaken it through this.
+        # and still wants this layer's posture.
+        #
+        # ⚠ READING IT HERE WEAKENS NOTHING, and that is all this line ever meant.
+        # A consumer CAN weaken the posture of a factory-built unit - `mkForce`
+        # wins over the module's own merge - and `checks.hardening` is what
+        # catches that, by comparing the running unit against this table. The
+        # neighbouring comment used to imply the merge itself made it impossible.
         hardening = import ./nix/lib/hardening.nix;
 
         # The synthetic credentials builder, exposed because a consumer writing a

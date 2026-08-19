@@ -3,8 +3,11 @@
 ADR-002 §7 classes `enforce_store_modes` as a BOUNDED-CHANGE shape whose declared
 mutation set is "the mode bits of the store directory and every file directly in
 it", and requires the mode to be read BACK OFF THE FILESYSTEM rather than
-inferred from a `chmod` that returned zero. So every assertion here stats the
-real thing; a fake filesystem would be testing the fake.
+inferred from a `chmod` that returned zero.
+
+So every test here runs against a real directory - a fake filesystem would be
+testing the fake. Some assertions stat it and some read the `ModeEnforcement`
+the call returned; both matter, and this line used to claim all of them stat.
 """
 
 from __future__ import annotations

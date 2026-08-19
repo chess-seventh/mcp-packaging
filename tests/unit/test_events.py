@@ -73,10 +73,15 @@ def test_a_reader_cannot_edit_the_record() -> None:
 
 
 @pytest.mark.property
-def test_the_suppression_count_lands_on_the_most_recent_event_of_that_name() -> None:
+def test_the_suppression_count_lands_on_an_event_of_that_name_and_no_other() -> None:
     """What was written and what is being held are read off the SAME line, which
     is what makes the accounting an identity rather than two numbers that could
-    disagree."""
+    disagree.
+
+    ⚠ NOT "the most recent", which this was called: one event of that name exists
+    here, so first-match and last-match are indistinguishable. What the body does
+    pin is that the count lands on that name and not on the other one.
+    """
     emit_event(EventName.AUTH_REJECTED, reason="bad_token")
     emit_event(EventName.TOOL_CALL)
     note_suppressed_event(EventName.AUTH_REJECTED)

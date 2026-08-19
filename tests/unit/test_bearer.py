@@ -137,7 +137,13 @@ def test_the_rejection_record_is_capped_and_says_what_it_held() -> None:
 
 @pytest.mark.property
 def test_no_rejection_event_carries_anything_of_the_secret() -> None:
-    """C8: not the value, not a prefix, not a length, not a hash."""
+    """C8: not the value and not a prefix of it.
+
+    Length and hash are not asserted - an event carrying either would have to be
+    built to do so, and no call site builds one. The docstring used to claim all
+    four, which is a claim about code that does not exist rather than about this
+    body.
+    """
     verify_bearer_token(f"Bearer {SECRET}-wrong", SECRET)
     for event in recorded_events(EventName.AUTH_REJECTED):
         rendered = repr(event)
@@ -174,7 +180,7 @@ def test_the_comparison_is_still_hmac_compare_digest() -> None:
 
 
 def _mentions_a_secret(node: ast.AST) -> bool:
-    """Whether an expression names one of the two secret-bearing locals."""
+    """Whether an expression names any of the secret-bearing locals."""
     return any(
         isinstance(child, ast.Name) and child.id in {"presented", "expected", "candidate", "token"}
         for child in ast.walk(node)

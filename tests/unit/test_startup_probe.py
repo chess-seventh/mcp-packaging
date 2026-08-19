@@ -64,9 +64,10 @@ def test_a_clean_run_reports_every_check_in_order_and_repairs_nothing(store: Pat
 
 
 @pytest.mark.error
-def test_the_probe_is_fail_fast_so_a_machine_with_three_faults_reports_one(store: Path) -> None:
-    """Deliberate. Three refusals in a journal is three things to go and read, and
-    the second and third are usually consequences of the first."""
+def test_the_probe_is_fail_fast_so_a_machine_with_two_faults_reports_one(store: Path) -> None:
+    """Deliberate. Two refusals in a journal is two things to go and read, and the
+    second is usually a consequence of the first. Named for what this body builds:
+    two failing checks. It used to say three."""
     ran: list[str] = []
 
     def first() -> ProbeCheckResult:
@@ -85,8 +86,12 @@ def test_the_probe_is_fail_fast_so_a_machine_with_three_faults_reports_one(store
 
 
 @pytest.mark.error
-def test_a_refusal_carries_the_report_of_everything_that_ran_before_it(store: Path) -> None:
-    """⚠ A REPAIR MADE ON THE WAY TO A REFUSAL MUST NOT BE LOST. A probe that
+def test_a_refusal_carries_the_report_of_the_check_that_refused(store: Path) -> None:
+    """⚠ A REPAIR MADE ON THE WAY TO A REFUSAL MUST NOT BE LOST.
+
+    One check runs here and it is the refusing one, so what this pins is that the
+    refusing check's own result reaches the report. The name used to say
+    "everything that ran before it", which this body does not exercise. A probe that
     made the store private and then refused would otherwise have no way to tell
     its caller what it changed - and "the check corrected the permissions and
     refused anyway" is exactly the shape of a store that was readable by every
