@@ -202,21 +202,22 @@ pkgs.testers.runNixOSTest {
     #
     # finds the service failed
     #
-    # ⚠ THE SECOND LINE USED TO END IN `|| true`, WHICH MAKES A COMMAND ALWAYS
-    # SUCCEED. So "finds the service failed" was carried entirely by the line
-    # above it, which proves only NOT ACTIVE - a unit that never started, or was
-    # stopped, or is still activating satisfies that. This file names a trailing
-    # `|| true` as the exact defect it fixed elsewhere, and then had one.
+    # ⚠ THIS LINE USED TO BE `systemctl is-failed … || true`, WHICH ALWAYS
+    # SUCCEEDS. So "finds the service failed" was carried entirely by a
+    # `wait_until_fails` on `is-active`, which proves only NOT ACTIVE - satisfied
+    # by a unit that never started, was stopped, or is still activating. This
+    # file names a trailing `|| true` as the exact defect it fixed elsewhere, and
+    # then had one.
     #
-    # `is-failed` PRINTS the state and exits non-zero when the unit is not
-    # failed, so the output is captured and compared. The `|| true` stays only to
-    # let the state be read on the path where it is not "failed".
+    # ⚠ AND WAITING IS THE WHOLE OF IT, WHICH THE FIRST FIX GOT WRONG. Asserting
+    # the state once, straight after `wait_until_fails`, reported `activating`:
+    # the unit has `Restart=on-failure` with a ten-second gap, so it cycles
+    # failed -> activating -> failed and only SETTLES at failed once the start
+    # limit trips. So this waits for the settled state rather than sampling a
+    # cycling one - the same shape `deployment.nix` already uses for its
+    # port-contended node, for the same reason.
     starved.wait_until_fails("systemctl is-active --quiet ${spec.name}.service")
-    starved_state = starved.succeed("systemctl is-failed ${spec.name}.service || true").strip()
-    assert starved_state == "failed", (
-        f"the unit reports {starved_state!r} rather than 'failed'. Not-active is not failed: a unit "
-        "that never started, or was stopped, or is still activating reads as not-active too."
-    )
+    starved.wait_until_succeeds("systemctl is-failed --quiet ${spec.name}.service", timeout = 180)
 
     # finds the server's own first instruction never ran
     #
