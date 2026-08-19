@@ -226,6 +226,16 @@
             api = mcpPackagingLib;
           };
 
+          # Two factory-built services claiming one endpoint fail at evaluation,
+          # and a correct two-server host does not. Also needs no builder
+          # feature - the mechanism is an assertion, so evaluating is the honest
+          # depth to ask it at.
+          port-claims = import ./nix/checks/port-claims.nix {
+            inherit pkgs nixpkgs system;
+            inherit (pkgs) lib;
+            api = mcpPackagingLib;
+          };
+
           # The Python half, run from the same lock the package is built from.
           unit-tests = import ./nix/checks/unit-tests.nix {
             inherit pkgs;
