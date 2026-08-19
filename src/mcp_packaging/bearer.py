@@ -38,7 +38,6 @@ MINIMUM_TOKEN_LENGTH = 32
 #: The scheme this server accepts, and the one character that ends it.
 BEARER_SCHEME = "Bearer"
 
-#: The header a caller presents its credential in.
 #: An ASGI application, as this layer needs to know it: a callable taking the
 #: scope, a receive and a send, and awaiting. Named once so the guard's
 #: parameter, its return and the transport that serves it all agree, and so
@@ -46,10 +45,13 @@ BEARER_SCHEME = "Bearer"
 #: at the point it is finally handed to a server.
 ASGIApplication = Callable[[dict, Callable[..., Any], Callable[..., Any]], Awaitable[None]]
 
+#: The header a caller presents its credential in. ⚠ This description used to sit
+#: above `ASGIApplication`, so rendered documentation gave the type alias the
+#: header's text and the header none.
 AUTHORIZATION_HEADER = b"authorization"
 
 #: What is compared when there is nothing real to compare. Fixed length, so the
-#: three classes that already know they will fail do the SAME work as the one that
+#: two classes that already know they will fail do the SAME work as the one that
 #: does not - identical bytes do not close a timing channel; identical work does.
 _DUMMY_PRESENTED = "\x00" * MINIMUM_TOKEN_LENGTH
 
@@ -58,9 +60,15 @@ _DUMMY_PRESENTED = "\x00" * MINIMUM_TOKEN_LENGTH
 #: to match by presenting the dummy.
 _DUMMY_EXPECTED = "\x01" * MINIMUM_TOKEN_LENGTH
 
-#: How many refusals are written per boot before the record starts holding them.
-#: A caller must not be able to fill the journal by presenting a wrong secret in a
-#: loop.
+#: How many refusals are written before the record starts holding them.
+#:
+#: ⚠ NOT "PER BOOT", WHICH IS WHAT THIS SAID. The cap is counted off the shared
+#: event ring, and the ring is bounded - so a process that emits enough OTHER
+#: events to rotate the rejections out of it starts writing another twenty, and
+#: "written plus held equals arrived" stops being an identity. Measured: 30
+#: refusals, then enough tool calls to evict them, then 30 more, gives 40 journal
+#: lines in one boot. It holds for the case that matters - a caller who only ever
+#: gets refused generates nothing else - and it is not the general claim.
 #:
 #: ⚠ The held ones are counted onto the last line of the IN-PROCESS RING, not
 #: onto the journal - that line was printed and flushed before the cap was

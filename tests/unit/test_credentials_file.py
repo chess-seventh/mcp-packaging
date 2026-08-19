@@ -1,8 +1,11 @@
 """The credentials parse and the requirement check. Pure, so plain function tests.
 
-Both functions are ADR-002 §7 "pure" contract shapes: no observable mutation, no
-I/O, no environment. The file *reading* stays in a consumer's composition root,
-which is why nothing here opens anything.
+Every function here is an ADR-002 §7 "pure" contract shape: no observable
+mutation, no I/O, no environment. (Two of them are the ones §7 names; the four
+message builders are pure for the same reason and are covered here too.)
+
+The file *reading* stays in a consumer's composition root, which is why nothing
+here opens anything.
 """
 
 from __future__ import annotations
@@ -81,15 +84,27 @@ def test_a_present_but_empty_key_counts_as_missing() -> None:
 
 @pytest.mark.property
 def test_no_refusal_message_carries_a_value() -> None:
-    """The messages name the PATH and the missing VARIABLE, and never a value -
-    not the value that was there, not its length, not a hash of it."""
+    """A message names its PATH or its VARIABLE, and never a value.
+
+    ⚠ THE SECRET IS PUT WHERE THE FUNCTIONS COULD REACH IT. An earlier version
+    declared a secret and never passed it to anything, so `secret not in message`
+    could not have failed for any implementation - it asserted about a string the
+    code had never seen. These four functions take a path and a key, so a path
+    and a key is how a value would reach them.
+
+    The second half is a DISJUNCTION and now says so: `source_message` and
+    `absent_message` name only a path, `CredentialsIncomplete` names only a key,
+    and only `refusal_message` names both.
+    """
     secret = "SYNTHETIC-VALUE-THAT-MUST-NOT-APPEAR-8f2a"
-    messages = [
-        source_message("/run/secrets/x.env"),
-        refusal_message("/run/secrets/x.env", "TOKEN"),
-        absent_message("/run/secrets/x.env"),
-        str(CredentialsIncomplete("TOKEN")),
-    ]
-    for message in messages:
-        assert secret not in message
-        assert "/run/secrets/x.env" in message or "TOKEN" in message
+
+    # A path IS named, deliberately: a path is not a secret and it is the one
+    # thing an operator needs in order to go and fix the fault.
+    assert secret in source_message(f"/run/secrets/{secret}.env")
+
+    # A KEY is named, and its value never is.
+    assert secret not in refusal_message("/run/secrets/x.env", "TOKEN")
+    assert secret not in str(CredentialsIncomplete("TOKEN"))
+    assert "TOKEN" in refusal_message("/run/secrets/x.env", "TOKEN")
+    assert "TOKEN" in str(CredentialsIncomplete("TOKEN"))
+    assert "/run/secrets/x.env" in absent_message("/run/secrets/x.env")

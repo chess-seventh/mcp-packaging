@@ -372,9 +372,15 @@ in
       # systemd's rendering - kept in agreement by hand; that file's own
       # assertions are what replaced the hand.
       #
-      # `//` and not `lib.mkMerge`: a consumer must not be able to override a
-      # tightening by defining the same directive at a lower priority. The
-      # posture is this factory's promise to every consumer, not a default.
+      # `//` and not `lib.mkMerge`, so the factory's own set is built without a
+      # priority a consumer's definition could out-rank inside it.
+      #
+      # ⚠ THIS COMMENT CLAIMED THAT MADE THE POSTURE UN-OVERRIDABLE. It does not:
+      # `lib.mkForce` in a consumer's module wins over the merged result either
+      # way, measured. What actually holds the promise is `checks/hardening.nix`,
+      # which reads each directive back off the RUNNING unit and compares it to
+      # the declared table - so an override ships and is then refused, rather
+      # than being unexpressible.
       // hardening.serviceConfig;
 
       # A unit nothing can fix by restarting stops trying and stays failed,

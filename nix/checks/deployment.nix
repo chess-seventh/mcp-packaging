@@ -224,7 +224,7 @@ pkgs.testers.runNixOSTest {
 
     # finds the store readable by that account alone
     mode = defaults.succeed("stat -c '%a' ${spec.stateArea}").strip()
-    assert mode == "700", f"the store is mode {mode}; anything but 700 is readable by somebody else"
+    assert mode == "700", f"the store is mode {mode}; anything wider than 700 is reachable by somebody else"
 
     # ------------------------------------------------------------------
     # With nothing configured, it listens only where nothing outside can reach

@@ -94,8 +94,14 @@ of a safety-critical assertion and one of them wrong:
    a refusal that echoes the offending definition performs a smaller version of
    the leak it is refusing.
 
-The hardening set is spliced with `//` rather than `mkMerge`, so a consumer
-cannot weaken a tightening by defining the same directive at a lower priority.
+The hardening set is spliced with `//` rather than `mkMerge`. ⚠ **That does not
+make it un-weakenable, and this page used to say it did.** `//` decides how the
+factory builds its own attribute set; it has no bearing on what a consumer's
+module can merge on top, and `lib.mkForce` overrides the result either way —
+measured. What holds the posture is `checks.hardening`, which reads every
+directive back off the **running** unit and compares it against the declared
+table rather than against the merged one. A consumer that overrides a tightening
+ships a weaker unit and that check goes red naming the directive.
 
 There are **no `extraOptions` / `extraServiceConfig` / `extraEnvironment` /
 `extraAssertions` passthroughs.** ADR-002 §3 requires each to name the value it

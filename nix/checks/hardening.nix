@@ -114,6 +114,11 @@ pkgs.testers.runNixOSTest {
       applied = nodes.box.systemd.services.${spec.name}.serviceConfig;
       appliedNames = builtins.attrNames applied;
 
+      # What the factory PROMISES, straight from the shared table. Used for every
+      # expected value; `applied` is used only for the completeness bookkeeping
+      # below, where the question really is "what does this unit set".
+      declared = (import ../lib/hardening.nix).serviceConfig;
+
       # Every directive the module actually sets, minus the ones declared not to
       # be part of the posture, minus the ones this check knows how to ask about.
       # Anything left is a tightening nobody checks.
@@ -125,8 +130,20 @@ pkgs.testers.runNixOSTest {
       # no longer sets at all.
       dropped = lib.subtractLists appliedNames requiredPosture;
 
+      # ⚠ EXPECTED FROM THE DECLARED SET, NOT FROM THE MERGED ONE. This line
+      # used to read `applied.${name}` - the unit's FINAL serviceConfig, after a
+      # consumer's own definitions merged into it. So a consumer writing
+      # `ProtectClock = lib.mkForce false` shipped a weaker unit and this check
+      # compared "no" against "no" and passed. Measured, both halves: the
+      # override reaches the unit, and the check stayed green.
+      #
+      # That is the "a derived source is blind to a deletion" failure this file's
+      # own header documents, one level up: derived from the module it was blind
+      # to a directive removed, derived from the MERGED module it is blind to a
+      # directive overridden. The declared set is the promise; the running unit
+      # is the fact; this compares those two and nothing else.
       booleanChecks = lib.concatMapStringsSep "\n" (name: ''
-        expected = "${if applied.${name} then "yes" else "no"}"
+        expected = "${if declared.${name} then "yes" else "no"}"
         seen = box.succeed("systemctl show ${spec.name}.service -p ${name} --value").strip()
         assert seen == expected, (
             f"${name} reads back as {seen!r} and the module declares {expected!r}. "
@@ -335,8 +352,9 @@ pkgs.testers.runNixOSTest {
       # ⚠ NOT "readable by the service account alone", which is what this phrase
       # used to say. The loop below reads the MODE; the owner is read into a
       # variable and never compared, so a root-owned 0600 file in the state area
-      # satisfies it. Ownership is asserted separately, on the state directory,
-      # where the unit's own `User=` makes it meaningful.
+      # satisfies it. Ownership is asserted in `service.nix` and `deployment.nix`,
+      # on the state directory, where the unit's own `User=` makes it meaningful -
+      # not in this file, which the sentence this replaces implied.
       for entry in walked:
           path, owner, file_mode = entry.rsplit(" ", 2)
           assert file_mode in ("600", "700"), f"{path} is mode {file_mode}, which is readable by somebody else"

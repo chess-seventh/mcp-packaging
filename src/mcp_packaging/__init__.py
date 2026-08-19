@@ -15,8 +15,10 @@ mechanisms hold it rather than review alone:
   members every consumer has, and each widens to ``| str`` so a consumer extends
   without this layer learning a domain word;
 * ``tests/unit/test_boundary.py`` matches every published file against a SHAPE -
-  any ``<something>-mcp`` that is not this repository's own, any address, any
-  port in the range these servers run in.
+  any ``<something>-mcp`` that is not this repository's own; and, over every
+  published file **except the two lock files**, any address and any port in the
+  range these servers run in. A lock file is a machine-written record of where
+  its dependencies came from, so it carries registry addresses by construction.
 
 ⚠ It does **not** catch a vendor name written on its own. It used to, through a
 list of salted digests, and that list was reversible in under a minute - so the

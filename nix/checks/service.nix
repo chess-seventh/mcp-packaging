@@ -2,11 +2,11 @@
 #
 # THE SHARED LAYER ITSELF (ADR-002): parameterised, names no consumer's fact.
 #
-# ⚠ THIS NEEDS A BUILDER ADVERTISING VIRTUALISATION. It cannot run on every box
-# in this fleet, and the machine this lane was built on is one of the ones that
-# cannot. That is why the closure secret-search is a separate check that needs
-# only a builder: the headline guarantee must not be gated behind a capability
-# half the fleet lacks.
+# ⚠ THIS NEEDS A BUILDER ADVERTISING VIRTUALISATION, and not every box has one.
+# That is why the closure secret-search is a separate check needing only a
+# builder: the headline guarantee must not be gated behind a capability some
+# machines lack. (This note used to add that the machine this was built on was
+# one of those; it is not, and all three VM checks run here.)
 #
 # The sandbox has no route to whatever the consumer integrates with, so nothing
 # asserted here is a real reading from it. These are claims about the SERVICE CONTRACT: that the unit
@@ -123,9 +123,18 @@ pkgs.testers.runNixOSTest {
 
     # The rotating authorisation lives in the state area, owned by the service
     # account alone, and its modes are the guarantee rather than a nicety.
+    #
+    # ⚠ THE OWNER USED TO BE READ AND NEVER COMPARED. `stat -c '%a %U'` was
+    # asserted with `startswith("700 ")`, so a root-owned 0700 state area passed
+    # under a message reading "not 700 owned by the service". Same defect as the
+    # one fixed in `hardening.nix`; this sibling was missed. Both halves are
+    # compared now, because both are the claim.
     supplied.succeed("test -d ${spec.stateArea}")
-    state_mode = supplied.succeed("stat -c '%a %U' ${spec.stateArea}").strip()
-    assert state_mode.startswith("700 "), f"the state area is {state_mode}, not 700 owned by the service"
+    state_mode, state_owner = supplied.succeed("stat -c '%a %U' ${spec.stateArea}").strip().split()
+    assert state_mode == "700", f"the state area is mode {state_mode}, not 700"
+    assert state_owner == "${spec.serviceAccount}", (
+        f"the state area is owned by {state_owner!r}, not by the service account"
+    )
 
     # finds the place the credentials arrive is not writable
     #
