@@ -113,6 +113,26 @@ let
           This option wants the LOCATION of a file the host delivers at run time. The
           offending value is deliberately not repeated in this message.
         ''
+      else if lib.hasPrefix builtins.storeDir (toString given) then
+        throw ''
+          REFUSING TO BUILD: ${lib.showOption location} was given a path inside the nix store.
+
+          Name a path the HOST delivers at run time:
+
+              ${lib.showOption location} = "/run/secrets/${spec.name}.env";
+
+          ⚠ THIS IS THE SAME LEAK AS AN UNQUOTED PATH, ONE STEP LATER, and the refusal above
+          used to produce it: interpolating a path literal - `"''${./service.env}"` - is a
+          STRING, so it walked past the path check, and its value is the store path nix made by
+          COPYING the file in. Quoting the path is the remedy that guarantee prints, so a
+          person following the instruction exactly arrived at the outcome it exists to prevent.
+
+          The nix store is world-readable and a store path is permanent: every account on this
+          machine, and anything that can read the store, holds those credentials for as long as
+          that path exists, and deleting the line afterwards does not take it back.
+
+          The offending value is deliberately not repeated in this message.
+        ''
       else if lib.hasPrefix "/" (toString given) then
         given
       else

@@ -59,49 +59,80 @@ def _published() -> list[pathlib.Path]:
     there and failed at import. A boundary rule that cannot run in the gate is a
     boundary rule that runs only where somebody remembers to run it.
 
+    ⚠ THE EXCLUSIONS APPLY IN A CHECKOUT AND NOWHERE ELSE, and that asymmetry is
+    the fix rather than a shortcut. A hand-written exclusion list is a blind spot,
+    and the gate must not be the thing that is blind - a reviewer walked six
+    planted files past `nix flake check` through this list alone. But the Nix
+    source IS already the published set: the flake copies what git tracks, so
+    caches, build output and ignored files are not there to be excluded. So where
+    there is no `.git` the walk takes everything it finds and the blind spot does
+    not exist; where there is one, the exclusions apply and
+    `test_the_scanned_set_is_exactly_what_git_publishes` cross-checks them.
+
+    Symlinks are INCLUDED. Their contents are their target's and may be nothing,
+    but their NAMES are published like any other, and a name is enough.
+
     Excluded directories are NAMED rather than matched on a leading dot, so a
-    tracked `.github/` is scanned. ⚠ `.git` is on BOTH lists: in a linked git
+    tracked `.github/` is scanned. `.git` is on BOTH lists: in a linked git
     worktree it is a file, so a directory rule alone would read it.
     """
+    checkout = (REPOSITORY / ".git").exists()
     return sorted(
         path
         for path in REPOSITORY.rglob("*")
-        if path.is_file()
-        and not path.is_symlink()
-        and not any(
-            part in UNPUBLISHED_DIRS or part.endswith(".egg-info") for part in path.relative_to(REPOSITORY).parts[:-1]
+        if not path.is_dir()
+        and (
+            not checkout
+            or (
+                not any(
+                    part in UNPUBLISHED_DIRS or part.endswith(".egg-info")
+                    for part in path.relative_to(REPOSITORY).parts[:-1]
+                )
+                and path.name not in UNPUBLISHED_FILES
+                and not path.name.startswith("result")
+            )
         )
-        and path.name not in UNPUBLISHED_FILES
-        and not path.name.startswith("result")
     )
 
 
 def _readable(path: pathlib.Path) -> str:
-    """A file's text, or empty for anything that is not text."""
+    """A file's bytes as text, whatever those bytes are.
+
+    ⚠ IT USED TO RETURN THE EMPTY STRING FOR ANYTHING THAT WOULD NOT DECODE, and
+    that is a rule lying about itself: a tracked file with one high byte in it - a
+    PNG, a PDF, a latin-1 note - was scanned, read as nothing, and passed every
+    rule while the README claimed the mechanism covered every published file. A
+    planted `docs/blob.dat` carrying a server name, a host and a port went through
+    the gate AND the development shell.
+
+    latin-1 maps all 256 byte values, so it cannot raise. The result is nonsense
+    for a real binary and that is fine: the rules look for ASCII names and
+    addresses, and those survive the mapping byte for byte.
+    """
     try:
-        return path.read_text()
-    except (UnicodeDecodeError, OSError):
+        return path.read_bytes().decode("latin-1")
+    except OSError:
         return ""
 
 
-#: ⚠ THIS FILE IS SCANNED TOO, AND IT USED NOT TO BE. It excluded itself "so it
-#: could write the patterns down" - and then wrote the forbidden names into its
-#: own docstrings, explaining why they were forbidden. The one file whose job is
-#: keeping operator facts out of a public repository was the only file still
-#: publishing them, exempted by its own rule. Hashing every token is precisely
-#: what makes the exemption unnecessary: nothing here has to spell one.
+#: Everything this repository publishes. ⚠ THIS FILE IS IN THE SET TOO, and it
+#: used not to be: it excluded itself "so it could write the patterns down", and
+#: then wrote the forbidden names into its own docstrings. The one file whose job
+#: is keeping operator facts out of a public repository was the only one still
+#: publishing them, exempted by its own rule.
 SCANNED = _published()
 
-#: ⚠ EXCLUDED FROM THE ADDRESS RULES ONLY, never from the name rules. A lock file
-#: is a machine-written record of where its own dependencies came from, so it is
-#: full of registry addresses by construction and asking it about hosts is asking
-#: the wrong question. A consumer's name cannot arrive in one by hand, and the
-#: name rules still read them.
+#: ⚠ EXEMPT FROM THE ADDRESS RULES ONLY, never from the name rules. A lock file is
+#: a machine-written record of where its own dependencies came from, so it is full
+#: of registry addresses by construction and asking it about hosts is asking the
+#: wrong question. A server's name cannot arrive in one by hand, and the name
+#: rules still read them.
 GENERATED = {"uv.lock", "flake.lock"}
 
 ADDRESSABLE = [path for path in SCANNED if path.name not in GENERATED]
 
 PYTHON_SOURCES = sorted((REPOSITORY / "src" / "mcp_packaging").rglob("*.py"))
+
 
 #: This repository's own two distributions. Everything else matching the shape
 #: below is another server, and another server is a domain.
@@ -154,12 +185,24 @@ URL = re.compile(
 #: A host under `.ch`, `.dev`, `.cloud` or any country code walked past a rule
 #: written to catch upstreams. The list is long now and still finite - a filename
 #: is shaped exactly like a host, so a rule matching ANY dotted name would fire on
-#: `pyproject.toml` - and what it cannot cover is stated in the README.
+#: `pyproject.toml`. What it therefore cannot cover is stated in the README - and
+#: this comment claimed that before the README said it, which is the kind of claim
+#: about another document that nobody checks.
 BARE_HOST = re.compile(
     r"\b(?!github\.com|pypi\.org|python\.org|nixos\.org)"
     r"[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*"
     r"\.(?:net|com|io|org|internal|local|lan|dev|app|cloud|ai|xyz|site|online"
     r"|ch|de|fr|uk|eu|us|es|it|nl|be|at|se|no|dk|fi|pl|pt|ie|cz)\b",
+    re.IGNORECASE,
+)
+
+#: ⚠ IPv6 HAS ITS OWN RULE BECAUSE THE FLEET THIS SERVES IS REACHED OVER IT. A
+#: rule that knew only dotted quads would miss every unique-local and every
+#: link-local address. Loopback and the unspecified address are this layer's own
+#: vocabulary, and so is the `[::]` spelling the module refuses by name.
+IPV6_ADDRESS = re.compile(
+    r"(?<![0-9a-f:])(?!::1(?![0-9a-f:])|::(?![0-9a-f]))"
+    r"(?:[0-9a-f]{1,4}:){2,7}[0-9a-f]{1,4}(?![0-9a-f:])",
     re.IGNORECASE,
 )
 
@@ -217,7 +260,9 @@ def test_no_published_file_names_an_upstream(source: pathlib.Path) -> None:
     twice. A rule keyed on `https://` would have missed it, so there are two.
     """
     text = _readable(source)
-    found = sorted({*URL.findall(text), *BARE_HOST.findall(text), *IP_ADDRESS.findall(text)})
+    found = sorted(
+        {*URL.findall(text), *BARE_HOST.findall(text), *IP_ADDRESS.findall(text), *IPV6_ADDRESS.findall(text)}
+    )
     assert found == [], f"{_relative(source)} names {found}, and this layer reaches nothing"
 
 
@@ -322,16 +367,23 @@ def test_the_scanned_set_is_exactly_what_git_publishes() -> None:
 
 
 @pytest.mark.boundary
-def test_no_published_path_names_another_server_or_an_upstream() -> None:
-    """A NAME, not only a body. Every rule above reads file CONTENTS.
+def test_no_published_path_carries_anything_the_rules_forbid() -> None:
+    """A NAME, not only a body, and EVERY rule rather than two of them.
 
-    ⚠ `docs/<vendor>-notes.md` with an entirely innocuous body passed all of them,
-    and a public repository publishes its file listing on the landing page. The
-    path is the first thing a visitor reads and it was the one thing unchecked.
+    ⚠ `docs/<vendor>-notes.md` with an entirely innocuous body passed every
+    content rule, and a public repository publishes its file listing on its
+    landing page - the path is the first thing a visitor reads and it was the one
+    thing unchecked. The first version of this test then applied only the server
+    and hostname rules, so a filename built out of an address and a port still
+    passed. A path is text; it gets the same rules the text inside gets.
     """
     offences = sorted(
         _relative(path)
         for path in SCANNED
-        if SIBLING_SERVER.search(_relative(path)) or BARE_HOST.search(_relative(path))
+        if SIBLING_SERVER.search(_relative(path))
+        or BARE_HOST.search(_relative(path))
+        or IP_ADDRESS.search(_relative(path))
+        or IPV6_ADDRESS.search(_relative(path))
+        or [port for port in FLEET_PORT.findall(_relative(path)) if port != OWN_PORT]
     )
-    assert offences == [], f"these paths name something this layer may not know: {offences}"
+    assert offences == [], f"these paths carry something this layer may not know: {offences}"

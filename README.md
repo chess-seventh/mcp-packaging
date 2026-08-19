@@ -103,6 +103,12 @@ lock file is a machine-written record of where its own dependencies came from, s
 it carries registry addresses by construction; a consumer's name cannot arrive in
 one by hand, and the naming rules still read them.
 
+**Three further limits, stated rather than implied.** The hostname rule knows a
+long but finite list of top-level domains, so a host under one it does not know
+passes. The rules read ASCII: a homoglyph, a unicode hyphen or a base64 blob
+carrying a name passes. And they are accident-catchers, not adversary-catchers —
+somebody determined to smuggle a string past them can.
+
 Nothing scans **commit messages**. The current history is clean and was checked,
 but no rule keeps it so — that belongs to a hook, not to a unit test.
 
