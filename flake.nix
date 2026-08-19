@@ -131,9 +131,9 @@
 
         defaultListenAddress = "127.0.0.1";
 
-        # 8799. Chosen far from the that block the real fleet uses, because a
-        # PUBLIC repository must not encode one operator's port plan (ADR-007
-        # section 2) and an example that sat next to a real allocation would.
+        # An arbitrary high port with no meaning outside this example. A PUBLIC
+        # repository must not encode any operator's port plan, so this number is
+        # deliberately unrelated to whatever range a real deployment uses.
         defaultPort = 8799;
 
         tokenStoreVariable = "EXAMPLE_MCP_STATE";

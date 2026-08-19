@@ -77,10 +77,15 @@ An architecture rule without a mechanism is a wish. Four of them here:
 
 | Layer | Mechanism | The question it answers |
 |---|---|---|
-| Naming | `tests/unit/test_boundary.py` greps **both** halves of the tree | "does any source name a consumer of this layer?" |
+| Naming | `tests/unit/test_boundary.py` pattern-matches **every published file** — `*.py`, `*.nix`, `*.toml`, `*.md`, including `flake.nix` and `examples/` | "does anything this repository publishes name another server, or an upstream?" |
 | Dependency | the same file asks a **fresh interpreter** what one import costs | "does importing this drag in an MCP server or an HTTP client?" |
 | Surface | `checks.api-surface` | "does every symbol the published API names exist, and is anything exported that it does not name?" |
 | Posture | `nix/lib/hardening.nix` asserts at **evaluation** | "has a tightening been dropped, or added without anything able to read it back?" |
+
+The naming rule matches by **shape** — any `<something>-mcp` that is not this
+repository's own — rather than against a list of servers. A list would be a roster
+of private repositories, published, in the one file whose job is to keep operator
+facts out of a public tree.
 
 The last one is worth naming: it used to live only inside a NixOS virtual-machine
 test, and half the boxes in this fleet cannot run one — so on those, the
@@ -97,6 +102,20 @@ nix build .#checks.x86_64-linux.service        # NixOS VM test  (needs KVM)
 nix build .#checks.x86_64-linux.deployment     # NixOS VM test  (needs KVM)
 nix build .#checks.x86_64-linux.hardening      # NixOS VM test  (needs KVM)
 ```
+
+### What the checks here do not reach
+
+Said out loud rather than left for a consumer to discover:
+
+- The **`stateDocument` branch** of the service and deployment checks — restart
+  survival, power-cut survival, and the unwritable-store node — is *evaluated* on
+  every run but never *executed* here, because the example consumer persists
+  nothing. The first consumer that declares a `stateDocument` is the first to run
+  it. Each skip prints a `NOT ASSERTED` line naming itself.
+- The closure secret search runs against **one** secret here, not the several a
+  consumer with a full credentials file supplies.
+- `nix flake check` is run for `x86_64-linux`; `aarch64-linux` is declared
+  supported and is not built on this hardware.
 
 **Three of the seven need a builder advertising virtualisation** and will not run
 on a box without `/dev/kvm`. That is why the closure secret search — the check

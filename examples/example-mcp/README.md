@@ -3,11 +3,10 @@
 The example consumer of [`mcp-packaging`](../../README.md): the smallest honest
 MCP server the shared layer can build, package, harden and check.
 
-It exists to be a **second shape**, not a second copy. The reference consumer
-(`the reference consumer`) holds an OAuth2 client id, an OAuth2 client secret, a rotating
-refresh token and a bearer secret, and it persists a credential document it must
-not lose. This one holds **one** secret — the bearer token the shared layer needs
-before it will open a listener — and persists nothing.
+It exists to be a **second shape**, not a second copy. The server this layer was
+first extracted from carries several secrets and persists a credential document
+it must not lose. This one holds **one** secret — the bearer token the shared
+layer needs before it will open a listener — and persists nothing.
 
 Until it existed, "the packaging layer is shared" was a claim measured against a
 single consumer, and a layer whose shape is decided by one consumer is a guess

@@ -55,12 +55,12 @@ class McpServer(Protocol):
 DEFAULT_HOST = "127.0.0.1"
 
 # ⚠ THERE IS NO `DEFAULT_PORT` HERE, AND ITS ABSENCE IS THE BOUNDARY RULE BITING.
-# The reference implementation carried `DEFAULT_PORT = a port one server holds`, which is the port
-# ADR-007 assigns to ONE consumer - a fleet fact belonging to the registry in
-# `nix/lib/ports.nix` and to each consumer's own composition root. A shared layer
-# holding it would hand every other server a default that is already taken, and
-# `port` is a required argument of every function below precisely so nobody can
-# take it by accident.
+# The code this moved from carried one, and it was the port assigned to a single
+# server - an operator's allocation rather than anything this layer can know. A
+# shared default would hand every OTHER server a port already taken, so `port` is
+# a required argument of every function below precisely so nobody can take one by
+# accident. Where the allocation is recorded is the business of whatever
+# repository owns that fleet's configuration, and it is not this one.
 
 #: The single MCP path. There is no other route, authenticated or not (C5).
 MCP_PATH = "/mcp"

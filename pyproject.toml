@@ -23,13 +23,13 @@ dev = [
 # ONE dependency, and the shortness of this list is a property rather than an
 # accident. This layer knows about MCP, sockets, headers, systemd units and
 # filesystem modes; it knows nothing about any integration's API, so it needs no
-# HTTP client of its own. `httpx` is a dependency of the CONSUMERS - the reference consumer
-# has it, a second consumer will - and it is not one here.
+# HTTP client of its own. An HTTP client is a CONSUMER's dependency, and not one
+# here.
 #
-# mcp is held BELOW 2.0 deliberately. consumers of this layer are deployed on 1.x and
-# the reference consumer is built against the same range, so this layer keeps working on
-# both. Moving the fleet to the 2.x SDK is a change with its own blast radius and
-# it belongs to a lane that has nothing else in it.
+# mcp is held BELOW 2.0 deliberately: consumers of this layer are deployed on the
+# 1.x SDK, and a shared layer that moved to 2.x would move them all at once.
+# Widening this range is a change with its own blast radius and it belongs to a
+# lane that has nothing else in it.
 #
 # Both `mcp` imports in `mcp_packaging.transport` are FUNCTION-LOCAL on purpose:
 # `import mcp_packaging` and every pure module in it resolve with the SDK absent,

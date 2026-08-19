@@ -3,9 +3,9 @@ build-backend = "hatchling.build"
 requires = ["hatchling"]
 
 [project]
-# ⚠ THE SECOND CONSUMER, AND ITS CREDENTIAL SHAPE IS THE POINT. `the reference consumer`
-# holds an OAuth2 client, a rotating refresh token AND a bearer secret - four
-# values. This one holds ONE: the bearer secret the shared layer needs to open a
+# ⚠ THE SECOND CONSUMER, AND ITS CREDENTIAL SHAPE IS THE POINT. The server this
+# layer was first extracted from carries four values in its credentials file.
+# This one carries ONE: the bearer secret the shared layer needs to open a
 # listener at all. If the layer only fits the first shape it is not a shared
 # layer, and until this existed nothing measured which of the two was true.
 dependencies = [

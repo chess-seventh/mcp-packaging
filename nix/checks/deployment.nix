@@ -405,9 +405,7 @@ pkgs.testers.runNixOSTest {
                 )
               ''
             else
-              ''
-                print("NOT ASSERTED: the journal names no upstream - this consumer declares no upstreamJournalMarker")
-              ''
+              ""
           }
         ''
       else
@@ -415,5 +413,14 @@ pkgs.testers.runNixOSTest {
           print("NOT ASSERTED: an unwritable store - this consumer declares no stateDocument, so its probe has no write path to break")
         ''
     }
+    ${lib.optionalString (!(spec ? upstreamJournalMarker)) ''
+      # ⚠ PRINTED OUT HERE, NOT INSIDE THE BRANCH ABOVE. This line used to live
+      # inside the `keepsState` arm, so a consumer that declared no
+      # `upstreamJournalMarker` AND no `stateDocument` was told about the second
+      # omission and never about the first. A skipped assertion that does not
+      # print is the whole failure mode this repository writes these lines for,
+      # reproduced inside the mechanism meant to prevent it.
+      print("NOT ASSERTED: the journal names no upstream - this consumer declares no upstreamJournalMarker")
+    ''}
   '';
 }

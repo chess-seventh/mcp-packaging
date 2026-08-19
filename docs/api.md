@@ -34,18 +34,25 @@ ignores the rest, so a field added for a fourth consumer changes no call site.
 | `defaultPort` | port | This consumer's port. There is no shared default; see below. |
 | `sharedSecretVariable` | string | The name of the bearer secret in the credentials file. |
 | `credentialsDirectoryVariable` | string | The variable the unit sets to where systemd put the loaded credential. A **path**, never a secret. |
+| `tokenStoreVariable` | string | The variable name the unit sets to `stateArea`, so the server is told where its own state lives. ⚠ **This row was in the Optional table and the module reads it unconditionally** — a consumer following the published API and omitting it died at evaluation with `attribute 'tokenStoreVariable' missing`. Found by an external consumer flake, not by anything in this repository, because the example declares it. |
 | `credentialsFileExample` | string | ⚠ **Renders into the option description, which lands in the world-readable Nix store on every build.** It must be unmistakably a placeholder; put the word `example` in the path itself so the file name alone answers the question. |
+| `toolNames` | list of string | The surface `mkSessionProbe` reads back BY NAME. Required, not optional: all three VM checks build a probe, so a consumer using `mkChecks` at all must supply it. `mkSessionProbe` **refuses to build on an empty list** — the surface loop is generated from it, so an empty one generates no checks and the probe would report a working surface on any `200`, silently. |
 | `meta` | attrs | Standard package meta for the build output. |
 
 ### Optional, and each absence is reported rather than assumed
+
+Every field below is read through `spec ? field` or `spec.field or <default>`, so
+omitting one is a supported configuration rather than an evaluation error. ⚠ **The
+Required table above is the set the tree reads unconditionally** — that
+correspondence is the contract, and it was wrong once: `tokenStoreVariable` sat
+here while `mkServiceModule` read it directly, so a consumer following this page
+and omitting it failed at evaluation.
 
 | Field | Type | What it turns on |
 |---|---|---|
 | `credentialsVariables` | attrs of string | Every **other** secret this consumer's credentials file carries, as `NAME = "SYNTHETIC-…"`. Default `{ }`, which is a real answer: a server whose only secret is its bearer token supplies nothing and every check still runs. |
 | `stateDocument` | `{ name, text }` | The consumer's own persisted document. Turns on the restart-survival, power-cut-survival and unwritable-store scenarios. Absent, each of those **prints a `NOT ASSERTED` line** and the restart and the crash still happen. |
 | `upstreamJournalMarker` | string | A string that could only appear in the journal if this server had reached what it integrates with. Turns on one assertion in the deployment check. |
-| `tokenStoreVariable` | string | The variable the unit sets to the state area. |
-| `toolNames` | list of string | Required by `mkSessionProbe`, which **refuses to build on an empty list** — a generated assertion that can generate to nothing reports a working surface on any `200`, silently. |
 
 ## `lib.mkServerPackage`
 
@@ -93,6 +100,30 @@ There are **no `extraOptions` / `extraServiceConfig` / `extraEnvironment` /
 `extraAssertions` passthroughs.** ADR-002 §3 requires each to name the value it
 carries today and to be deleted before publication if it carries none. None
 carries one. A passthrough with no consumer is a hole in the boundary rule.
+
+## `lib.mkSessionProbe`
+
+```text
+{ pkgs, spec } -> a package installing `<spec.name>-session-probe`
+```
+
+A caller that opens a **real** MCP session against a running service and reads the
+tool surface back. It reads `spec.name` and `spec.toolNames`, and it takes
+`<address> <port> <secret>` on its command line.
+
+It requires, in order: `initialize` to return 200 **and a session id** — something
+only a manager with a live task group can mint; `tools/list` to return 200 inside
+that session; and **every** name in `spec.toolNames` to be present in the result.
+
+⚠ **It refuses to build on an empty `toolNames`.** The surface loop is generated
+from that list, so an empty one generates no checks at all and the probe would
+report a working surface on any 200, silently.
+
+⚠ **Why it is this strict.** Every earlier check asked only whether the service
+"answers" — that `curl`'s status was not `000`. An HTTP **500 satisfies that**, and
+500 is what the server returned to every *authenticated* caller for the whole life
+of a branch: the refusal path was asserted precisely and the success path was
+asserted as "not nothing", so the guard was proven and the thing it guards was not.
 
 ## `lib.mkChecks`
 

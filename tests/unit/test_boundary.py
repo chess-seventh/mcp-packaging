@@ -13,67 +13,106 @@ from __future__ import annotations
 import ast
 import importlib
 import pathlib
+import re
 import subprocess
 import sys
 
 import pytest
 
-SOURCE_ROOT = pathlib.Path(__file__).resolve().parents[2] / "src" / "mcp_packaging"
-NIX_ROOT = pathlib.Path(__file__).resolve().parents[2] / "nix"
+REPOSITORY = pathlib.Path(__file__).resolve().parents[2]
 
-#: The fleet's own words. A layer that learns one of these has learned a domain,
-#: and the day it does is the day four consumers inherit the fifth's shape.
+#: Everything this repository PUBLISHES. ⚠ THE SET USED TO BE `src/` AND `nix/`
+#: ALONE, and a planted leak in `flake.nix` passed all 28 tests - while
+#: `examples/` breached the rule at the time it was written. A boundary mechanism
+#: that does not cover the files a reader opens first is a mechanism with a hole
+#: in exactly the place prose gets written.
 #:
-#: ⚠ ONLY UNAMBIGUOUS IDENTIFIERS ARE ON THIS LIST, and the first version of it
-#: is why. It also carried `measurement` and `oauth`, which are ordinary English
-#: in a sentence EXPLAINING why a mechanism was left out - so the check fired on
-#: the prose that documents the boundary rather than on prose that breaches it. A
-#: rule whose true positives are outnumbered by its false ones gets an exemption
-#: list, and an exemption list is where a real leak eventually hides.
-#:
-#: Every entry below is a name that can only appear here by mistake: the five
-#: consumers ADR-001 names, and one consumer's API host, which is exactly what
-#: `checks/deployment.nix` was found grepping the journal for.
-FORBIDDEN_WORDS = (
-    "the reference consumer",
-    "the prior art",
-    "a second consumer",
-    "another consumer",
-    "an-upstream-host",
-    "another consumer",
-    "a-domain-reading",
+#: `tests/` is excluded because this file must be able to write the patterns down
+#: in order to search for them.
+SCANNED = sorted(
+    path
+    for pattern in ("*.py", "*.nix", "*.toml", "*.md")
+    for path in REPOSITORY.rglob(pattern)
+    if "/tests/" not in f"/{path.relative_to(REPOSITORY)}" and not path.relative_to(REPOSITORY).parts[0].startswith(".")
 )
 
-PYTHON_SOURCES = sorted(SOURCE_ROOT.rglob("*.py"))
-NIX_SOURCES = sorted(NIX_ROOT.rglob("*.nix"))
+PYTHON_SOURCES = sorted((REPOSITORY / "src" / "mcp_packaging").rglob("*.py"))
+
+#: This repository's own two distributions. Everything else matching the shape
+#: below is another server, and another server is a domain.
+OWN_NAMES = ("mcp-packaging", "mcp_packaging", "example-mcp", "example_mcp")
+
+#: ⚠ A PATTERN, NOT A ROSTER, AND THE CHANGE IS ABOUT PUBLICATION. The first
+#: version listed the fleet's servers by name - which put a private repository
+#: roster into a PUBLIC repository, in the one file whose whole job is to keep
+#: operator facts out of it. The pattern catches every server in the family
+#: including ones that do not exist yet, and it names none of them.
+SIBLING_SERVER = re.compile(rf"\b(?!(?:{'|'.join(OWN_NAMES)})\b)[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*[-_]mcp\b")
+
+#: This layer opens no outbound connection and integrates with nothing, so a URL
+#: naming a LITERAL REMOTE HOST in its published sources is either an upstream it
+#: must not know or dead prose.
+#:
+#: ⚠ THREE AUTHORITIES ARE ALLOWED, AND THE FIRST TWO ARE WHY THIS IS A REGEX
+#: RATHER THAN A GREP FOR "http". The checks build addresses out of the
+#: consumer's own spec (`http://${...}`) and the session probe out of its shell
+#: arguments (`http://$host:$port`) - those are the layer reaching a machine it
+#: was POINTED AT, which is the whole job. Loopback is allowed for the same
+#: reason. A literal remote name is the thing that can only be an upstream.
+URL = re.compile(
+    r"https?://(?!"
+    r"\$|\{"  # an interpolation: an address the caller supplied
+    r"|127\.0\.0\.1|localhost|\[::1\]"  # this machine
+    r"|github\.com/chess-seventh/mcp-packaging"  # this repository's own forge
+    r")[^\s\)\"'`]+"
+)
+
+#: A domain noun no packaging layer has a reason to spell.
+FORBIDDEN_WORDS = ("a-domain-reading",)
+
+
+def _relative(path: pathlib.Path) -> str:
+    return str(path.relative_to(REPOSITORY))
 
 
 @pytest.mark.boundary
-@pytest.mark.parametrize("source", PYTHON_SOURCES, ids=lambda path: path.name)
-def test_no_python_source_names_a_consumer_or_a_domain(source: pathlib.Path) -> None:
-    """No module here may name a consumer of this layer, in code or in a comment.
+@pytest.mark.parametrize("source", SCANNED, ids=_relative)
+def test_no_published_file_names_another_server(source: pathlib.Path) -> None:
+    """Nothing this repository publishes may name another server in the family.
 
-    Comments included, deliberately. The prose is what a person reads to learn
-    what a component is for, and prose that names one consumer teaches the next
-    four that they are guests in somebody else's layer.
+    Comments and prose included, deliberately. The prose is what a person reads to
+    learn what a component is for, and prose that names one consumer teaches the
+    next four that they are guests in somebody else's layer — and in a PUBLIC
+    repository it also publishes which private servers exist.
+
+    Matched by SHAPE rather than against a list, so the rule holds for a consumer
+    nobody has written yet and this file publishes no roster of its own.
     """
-    text = source.read_text().lower()
-    found = [word for word in FORBIDDEN_WORDS if word in text]
-    assert found == [], f"{source.name} names {found}, and this layer knows no domain"
+    found = sorted(set(SIBLING_SERVER.findall(source.read_text())))
+    assert found == [], f"{_relative(source)} names {found}, and this layer knows no other server"
 
 
 @pytest.mark.boundary
-@pytest.mark.parametrize("source", NIX_SOURCES, ids=lambda path: path.name)
-def test_no_nix_source_names_a_consumer_or_a_domain(source: pathlib.Path) -> None:
-    """The same rule for the Nix half, which is where the last real leak was.
+@pytest.mark.parametrize("source", SCANNED, ids=_relative)
+def test_no_published_file_names_an_upstream(source: pathlib.Path) -> None:
+    """No URL outside this repository's own forge.
 
-    `checks/deployment.nix` asserted that the journal did not name `an-upstream-host` - one
-    consumer's API host, hardcoded in a file whose own header said it named none.
-    It passed review twice.
+    ⚠ THE LAST REAL LEAK OUT OF THE EXTRACTION WAS EXACTLY THIS SHAPE: a check
+    asserted that the journal did not name one consumer's API host, hardcoded in a
+    file whose own header said it named none. It passed review twice. That address
+    is now a parameter the consumer supplies, and this is what keeps it one.
     """
+    found = sorted(set(URL.findall(source.read_text())))
+    assert found == [], f"{_relative(source)} names {found}, and this layer reaches nothing"
+
+
+@pytest.mark.boundary
+@pytest.mark.parametrize("source", SCANNED, ids=_relative)
+def test_no_published_file_names_a_domain_noun(source: pathlib.Path) -> None:
+    """The few words that can only appear here by mistake."""
     text = source.read_text().lower()
     found = [word for word in FORBIDDEN_WORDS if word in text]
-    assert found == [], f"{source.name} names {found}, and this layer knows no domain"
+    assert found == [], f"{_relative(source)} names {found}, and this layer knows no domain"
 
 
 @pytest.mark.boundary
