@@ -247,16 +247,23 @@ pkgs.testers.runNixOSTest {
       )
 
       # ------------------------------------------------------------------
-      # Tightening the service does not cost it the authorisation
+      # Tightening the service does not cost it its startup probe
       # ------------------------------------------------------------------
-      # proves the service still stores a renewed authorisation
+      # proves the probe ran under every directive above, and did not refuse
       #
-      # Through the REAL write path, and not by writing a file here. The startup
-      # probe writes a sentinel through the same `durable_write` a rotation goes
-      # through, and refuses the start when that write does not land - so a unit
-      # that reached active under this tightening has already performed a durable
-      # write with every directive above applied. Writing a file from the test
-      # would prove that the TEST can write, which is a different question.
+      # ⚠ THIS HEADING USED TO SAY "still stores a renewed authorisation", and
+      # justified itself with a sentinel written through the durable write that a
+      # rotation goes through. Neither exists here: the durable write did not move
+      # into this layer, and a consumer supplies its own probe checks - the
+      # example one has no write-path check at all, so no sentinel is ever
+      # written. Two assertions were carrying a phrase about durability that
+      # nothing in them measured, in a file whose own header calls that shape "a
+      # passing manifest".
+      #
+      # What they DO prove, and it is worth proving: the probe ran with every
+      # tightening applied and did not refuse. A directive that broke the store's
+      # modes or its write path is refused BY the probe, so this is the check that
+      # a consumer whose probe does exercise its store gets for free.
       #
       # The anti-vacuity half: the probe must genuinely have run. A refusal event
       # would mean it ran and refused; no event at all plus an active unit is the

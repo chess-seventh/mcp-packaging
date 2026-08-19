@@ -13,8 +13,7 @@
 # starts, reports ready when it is really ready, refuses what it should refuse,
 # and keeps the rotating authorisation across a restart.
 #
-# Each claim phrase below is written NEXT TO the assertion that earns it, in the
-# exact words the acceptance suite names. A phrase that drifts from its
+# Each claim phrase below is written NEXT TO the assertion that earns it. A phrase that drifts from its
 # assertion turns a real check into a passing manifest.
 {
   pkgs,

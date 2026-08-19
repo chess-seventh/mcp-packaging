@@ -1,7 +1,8 @@
 """Pure parse of a KEY=VALUE credentials file, and a pure requirement check.
 
-ADR-002 §1: every one of the five future consumers reads a credentials file, and
-none of them should write this twice. The file *reading* stays in each consumer's
+ADR-002 §1: every consumer of this layer reads a credentials file, and none of
+them should write this twice. (How many there are is not this repository's fact
+to state - two files here once gave two different numbers.) The file *reading* stays in each consumer's
 composition root; only the parse and the requirement live here.
 
 Nothing in this module opens a file, reads an environment, or names a variable of

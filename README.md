@@ -57,8 +57,8 @@ built and checked here on every run rather than described.
 
 ## One `serviceSpec`, read by every factory
 
-A consumer writes **one** record and passes the same object to all three
-factories, which read what they need and ignore the rest. That is what reduces
+A consumer writes **one** record and passes the same object to the four
+factories that take one, which read what they need and ignore the rest. That is what reduces
 what a new consumer must get right from about forty arguments to one object, and
 what makes a field added for a fourth consumer change no call site.
 

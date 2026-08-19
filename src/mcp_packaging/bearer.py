@@ -212,6 +212,7 @@ def _record_rejection(reason: RejectionReason) -> None:
     """Write the class down locally, capped, and count what the cap held back.
 
     The class is written for the operator, so a pattern forming is visible in
+    their own journal.
     Nothing of what the caller presented and nothing of what the server holds is
     written - not the value, not a prefix, not a length, not a hash.
 

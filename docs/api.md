@@ -36,7 +36,7 @@ ignores the rest, so a field added for a fourth consumer changes no call site.
 | `sharedSecretVariable` | string | The name of the bearer secret in the credentials file. |
 | `credentialsDirectoryVariable` | string | The variable the unit sets to where systemd put the loaded credential. A **path**, never a secret. |
 | `tokenStoreVariable` | string | The variable name the unit sets to `stateArea`, so the server is told where its own state lives. ⚠ **This row was in the Optional table and the module reads it unconditionally** — a consumer following the published API and omitting it died at evaluation with `attribute 'tokenStoreVariable' missing`. Found by an external consumer flake, not by anything in this repository, because the example declares it. |
-| `credentialsFileExample` | string | ⚠ **Renders into the option description, which lands in the world-readable Nix store on every build.** It must be unmistakably a placeholder; put the word `example` in the path itself so the file name alone answers the question. |
+| `credentialsFileExample` | string | ⚠ **Renders into the option's `example`, which lands in the world-readable Nix store on every build** — measured in the generated `options.json`. It must be unmistakably a placeholder; put the word `example` in the path itself so the file name alone answers the question. |
 | `toolNames` | list of string | The surface `mkSessionProbe` reads back BY NAME. Required, not optional: all three VM checks build a probe, so a consumer using `mkChecks` at all must supply it. `mkSessionProbe` **refuses to build on an empty list** — the surface loop is generated from it, so an empty one generates no checks and the probe would report a working surface on any `200`, silently. |
 | `meta` | attrs | Standard package meta for the build output. Like `entryPoint`, handed to `mkServerPackage` directly rather than read off the spec. |
 
@@ -53,7 +53,7 @@ and omitting it failed at evaluation.
 |---|---|---|
 | `credentialsVariables` | attrs of string | Every **other** secret this consumer's credentials file carries, as `NAME = "SYNTHETIC-…"`. Default `{ }`, which is a real answer: a server whose only secret is its bearer token supplies nothing and every check still runs. |
 | `stateDocument` | `{ name, text }` | The consumer's own persisted document. Turns on the restart-survival, power-cut-survival and unwritable-store scenarios. Absent, each of those **prints a `NOT ASSERTED` line** and the restart and the crash still happen. |
-| `upstreamJournalMarker` | string | A string that could only appear in the journal if this server had reached what it integrates with. Turns on one assertion in the deployment check. |
+| `upstreamJournalMarker` | string | A string that could only appear in the journal if this server had reached what it integrates with. Turns on one assertion in the deployment check — ⚠ **nested inside the `stateDocument` arm**, so declaring this one alone turns on nothing. Declaring neither still prints a `NOT ASSERTED` line for each. |
 
 ## `lib.mkServerPackage`
 

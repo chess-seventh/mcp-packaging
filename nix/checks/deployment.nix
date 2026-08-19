@@ -17,8 +17,7 @@
 # is the SERVICE CONTRACT. Where a claim would otherwise be vacuous, the check plants what it
 # needs first and says so.
 #
-# Each claim phrase is written NEXT TO the assertion that earns it, in the exact
-# words the acceptance suite names. A phrase that drifts from its assertion turns
+# Each claim phrase is written NEXT TO the assertion that earns it. A phrase that drifts from its assertion turns
 # a real check into a passing manifest.
 {
   pkgs,

@@ -249,8 +249,8 @@ in
     credentialsFile = lib.mkOption {
       type = credentialsFilePath;
       # spec.credentialsFileExample, never a literal built here (ADR-002 section
-      # 3). It renders into the option description, and an option description
-      # lands in the nix store on every build - so this is the one example in the
+      # 3). It renders into the option's `example`, and that lands in the nix
+      # store on every build inside the generated options documentation - so this is the one example in the
       # module that a person could one day find and be unable to tell from a real
       # value. The consumer owns what its own placeholder looks like, and the ADR
       # requires it to be obviously a placeholder.
