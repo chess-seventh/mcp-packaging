@@ -163,8 +163,18 @@ name.
 ## `lib.mkFixtures`
 
 ```text
-{ pkgs, spec } -> { sharedSecret, variables, values, file }
+{ pkgs, spec } -> { sharedSecret, variables, values, file, hostPath, hostModule }
 ```
+
+`hostPath` and `hostModule` are how a CHECK delivers the fixture: the module
+refuses a credentials file named as a store path, so a check that handed it one
+would be the least production-like part of the suite. `hostModule` places the
+file the way a host does and `hostPath` is what the unit is pointed at.
+
+⚠ **`checks.api-surface` pins the six top-level `lib` names and not the shape of
+what they return**, so these two were added and this page went stale for two
+commits. If you change what a factory returns, this page is the only thing that
+notices.
 
 The synthetic credentials, built once from `spec.sharedSecretVariable` and
 `spec.credentialsVariables`. Every check takes both its search terms and its

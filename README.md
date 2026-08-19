@@ -46,7 +46,10 @@ agreement with this repository's.
 | `lib.hardening` | The tightening set as data: `serviceConfig` (what is applied) and `posture` (what must be applied). |
 | `lib.mkFixtures` | The synthetic credentials builder, for a consumer writing a check of its own. |
 
-Every factory takes the consumer's own `pkgs`, so none of them is per-system.
+None of these is per-system: a consumer calls them from wherever it already has
+a package set. The four that build something take that set as `pkgs`;
+`mkServiceModule` takes only `spec` and gets `pkgs` from the module system when
+the host evaluates it, so passing it one is an error rather than a no-op.
 
 The full parameter surface is [`docs/api.md`](docs/api.md). The shape of a
 consumer is [`examples/example-mcp`](examples/example-mcp/README.md), and it is
@@ -73,7 +76,7 @@ serviceSpec = rec {
 
 ## The boundary, and what holds it
 
-An architecture rule without a mechanism is a wish. Four of them here:
+An architecture rule without a mechanism is a wish. Five of them here:
 
 | Layer | Mechanism | The question it answers |
 |---|---|---|
@@ -112,14 +115,20 @@ somebody determined to smuggle a string past them can.
 Nothing scans **commit messages**. The current history is clean and was checked,
 but no rule keeps it so — that belongs to a hook, not to a unit test.
 
-The last one is worth naming: it used to live only inside a NixOS virtual-machine
-test, and half the boxes in this fleet cannot run one — so on those, the
-completeness bookkeeping never ran at all. It now runs wherever `nix` evaluates.
+**Posture** is worth naming, because it moved: it used to live only inside a
+NixOS virtual-machine test, and half the boxes in this fleet cannot run one — so
+on those, the completeness bookkeeping never ran at all. It now runs wherever
+`nix` evaluates, and the VM check keeps the half only a running unit can answer.
+
+(This paragraph names its subject because it once did not. Two paragraphs were
+inserted above it and "the last one" quietly came to mean the sentence about
+commit messages, asserting the opposite of what that sentence says.)
 
 ## Running the checks
 
 ```bash
 nix flake check                  # everything below
+nix build .#checks.x86_64-linux.example-server # the example consumer builds at all
 nix build .#checks.x86_64-linux.unit-tests     # the Python suite, no VM, seconds
 nix build .#checks.x86_64-linux.api-surface    # the published API, no VM, instant
 nix build .#checks.x86_64-linux.secret-search  # a real system closure, no VM
