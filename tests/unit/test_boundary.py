@@ -81,7 +81,12 @@ def _published() -> list[pathlib.Path]:
     return sorted(
         path
         for path in REPOSITORY.rglob("*")
-        if not path.is_dir()
+        # ⚠ `is_dir()` FOLLOWS THE LINK, so a symlink pointing at a directory was
+        # dropped from the walk entirely - neither its target string nor its own
+        # path rule-checked - while the docstring below claimed symlinks are
+        # included. A link is never a directory for this purpose: git stores it as
+        # its target string either way.
+        if not (path.is_dir() and not path.is_symlink())
         and (
             not checkout
             or (
@@ -232,6 +237,39 @@ IPV6_ADDRESS = re.compile(
 #: that flagged those would flag the guard that exists to refuse them.
 IPV6_ALLOWED = {"::", "::0", "::1", "0:0:0:0:0:0:0:0", "::ffff:0", "::ffff:0.0.0.0"}
 
+
+def _addresses_in(text: str) -> set[str]:
+    """The IPv6 addresses in some text, without the things that merely look like one.
+
+    ⚠ A RULE THAT CRIES WOLF GETS SWITCHED OFF, so the expanded branch is filtered
+    rather than left to fire on a wall-clock time (`10:30:45`), a MAC address, or
+    a slice written with colons. None of those exists in this tree today, and that
+    is exactly when a false positive is cheapest to remove.
+
+    Two filters, both structural rather than a list of exceptions:
+
+    * a compressed address contains `::` and nothing else does, so it is kept
+      unconditionally;
+    * an expanded one must carry a hex LETTER somewhere - a purely decimal
+      colon-separated string is a time or a version, not an address anyone
+      writes - and must not be six groups of exactly two digits, which is a MAC.
+    """
+    found = set()
+    for candidate in IPV6_ADDRESS.findall(text):
+        if candidate.lower() in IPV6_ALLOWED:
+            continue
+        if "::" in candidate:
+            found.add(candidate)
+            continue
+        groups = candidate.split(":")
+        if not any(character in "abcdefABCDEF" for character in candidate):
+            continue
+        if len(groups) == 6 and all(len(group) == 2 for group in groups):
+            continue
+        found.add(candidate)
+    return found
+
+
 #: An address with no name at all. `BARE_HOST` cannot see one, and a fleet is
 #: reached by address at least as often as by name.
 #:
@@ -240,7 +278,18 @@ IPV6_ALLOWED = {"::", "::0", "::1", "0:0:0:0:0:0:0:0", "::ffff:0", "::ffff:0.0.0
 #: operator chose this" from "the default is loopback"), the every-interface
 #: value the module refuses by name, and TEST-NET-1 - the block IETF reserved so
 #: that a documentation address cannot be mistaken for somebody's real one.
-IP_ADDRESS = re.compile(r"(?<![\d.])(?!127\.|0\.0\.0\.0|192\.0\.2\.)(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
+IP_ADDRESS = re.compile(r"(?<![\d.])(?!127\.|192\.0\.2\.)(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
+
+
+def _quads_in(text: str) -> set[str]:
+    """The IPv4 addresses in some text, minus this layer's own vocabulary.
+
+    The unspecified address is filtered STRUCTURALLY - every octet is zero -
+    rather than by listing `0.0.0.0`. The module names it in four spellings now,
+    and a list would have to grow with them; "all the octets are zero" does not.
+    """
+    return {candidate for candidate in IP_ADDRESS.findall(text) if any(int(octet) for octet in candidate.split("."))}
+
 
 #: A port in the range these servers are deployed in. The example's own is the one
 #: number this repository may write; anything else in the range is an allocation,
@@ -290,8 +339,8 @@ def test_no_published_file_names_an_upstream(source: pathlib.Path) -> None:
         {
             *URL.findall(text),
             *BARE_HOST.findall(text),
-            *IP_ADDRESS.findall(text),
-            *(found for found in IPV6_ADDRESS.findall(text) if found.lower() not in IPV6_ALLOWED),
+            *_quads_in(text),
+            *_addresses_in(text),
         }
     )
     assert found == [], f"{_relative(source)} names {found}, and this layer reaches nothing"
@@ -413,8 +462,8 @@ def test_no_published_path_carries_anything_the_rules_forbid() -> None:
         for path in SCANNED
         if SIBLING_SERVER.search(_relative(path))
         or BARE_HOST.search(_relative(path))
-        or IP_ADDRESS.search(_relative(path))
-        or [found for found in IPV6_ADDRESS.findall(_relative(path)) if found.lower() not in IPV6_ALLOWED]
+        or _quads_in(_relative(path))
+        or _addresses_in(_relative(path))
         or [port for port in FLEET_PORT.findall(_relative(path)) if port != OWN_PORT]
     )
     assert offences == [], f"these paths carry something this layer may not know: {offences}"

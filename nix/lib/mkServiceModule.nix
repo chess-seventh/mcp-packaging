@@ -49,7 +49,26 @@ let
     "[0:0:0:0:0:0:0:0]"
     "::ffff:0.0.0.0"
     "[::ffff:0.0.0.0]"
+    # Zero-padded, short-form and dotted-short spellings, all of which resolve to
+    # the unspecified address. Added by the same standard as the two above: the
+    # list already held one member of each pair, so omitting the twin was
+    # arbitrary rather than scoped.
+    "0000:0000:0000:0000:0000:0000:0000:0000"
+    "[0000:0000:0000:0000:0000:0000:0000:0000]"
+    "00.00.00.00"
+    "0.0.0"
+    "0.0"
+    "0x0"
   ];
+
+  # ⚠ THIS IS AN ENUMERATION AND ENUMERATIONS LEAK. Every round of review has
+  # found another spelling that binds everything, because `getaddrinfo` accepts
+  # far more forms than a person writes - octal, hexadecimal, zero-padded,
+  # truncated. The honest fix is to NORMALISE rather than to enumerate, and Nix
+  # has no address parser to do it with; writing one here would be a parser in a
+  # module factory. So the list is scoped to what an operator actually types, the
+  # scope is stated rather than implied, and the guarantee this module publishes
+  # is that scope and not "every possible spelling".
 
   # ⚠ COMPARED WITHOUT WHITESPACE. `"0.0.0.0 "` - one trailing space, the kind a
   # copy-paste leaves - was accepted by an exact-match guard and binds exactly
