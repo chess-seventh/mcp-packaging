@@ -43,6 +43,20 @@
   # deciding what lands in the closure.
   packagesNeedingSetuptools ? [ ],
 
+  # WHICH distribution in the lock file this package closes over. Null means the
+  # workspace's own default, which is the answer for a repository holding one
+  # project - and it is what every consumer of this layer will pass.
+  #
+  # ⚠ IT EXISTS FOR THE ONE CASE THAT IS NOT THAT: a uv WORKSPACE, where the lock
+  # holds several projects and "the default" is the root's rather than the
+  # member's. This repository is exactly that case - `examples/example-mcp` is a
+  # member - and without this argument the example would be built from the shared
+  # layer's dependency set, which does not contain the example.
+  #
+  # A `uv2nix` dependency spec: an attribute set from distribution name to the
+  # list of optional-dependency groups wanted, e.g. `{ example-mcp = [ ]; }`.
+  dependencies ? null,
+
   meta,
 }:
 let
@@ -98,7 +112,9 @@ let
   # uv.lock. Nothing is installed or searched for while the server is answering
   # a question, and a dependency that cannot be resolved fails THIS derivation
   # naming itself rather than surfacing as an import error on the first call.
-  serverEnvironment = pythonSet.mkVirtualEnv "${distributionName}-env" workspace.deps.default;
+  serverEnvironment = pythonSet.mkVirtualEnv "${distributionName}-env" (
+    if dependencies == null then workspace.deps.default else dependencies
+  );
 in
 pkgs.runCommand "${distributionName}-${versionOf distributionName}"
   {
