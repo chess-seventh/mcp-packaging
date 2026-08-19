@@ -1,0 +1,99 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[dependency-groups]
+# ruff and ty are deliberately NOT declared here, and the reason is measured
+# rather than stylistic. Their PyPI wheels are dynamically-linked binaries built
+# for generic Linux, and NixOS refuses to run them: "Could not start dynamically
+# linked executable: ruff". Declaring them would put a tool in the lock file
+# that cannot execute on the only machines this repository is developed on.
+#
+# They come from THIS SHELL'S OWN PACKAGE SET instead - devenv.nix `packages` -
+# which is where treefmt and the pre-commit hook take them too.
+dev = [
+  "pytest>=7.4.0",
+  "pytest-cov>=4.1.0",
+  "pytest-asyncio>=0.21.0",
+  "coverage>=7.11.0",
+  "hypothesis>=6.0"
+]
+
+[project]
+# ONE dependency, and the shortness of this list is a property rather than an
+# accident. This layer knows about MCP, sockets, headers, systemd units and
+# filesystem modes; it knows nothing about any integration's API, so it needs no
+# HTTP client of its own. `httpx` is a dependency of the CONSUMERS - the reference consumer
+# has it, a second consumer will - and it is not one here.
+#
+# mcp is held BELOW 2.0 deliberately. consumers of this layer are deployed on 1.x and
+# the reference consumer is built against the same range, so this layer keeps working on
+# both. Moving the fleet to the 2.x SDK is a change with its own blast radius and
+# it belongs to a lane that has nothing else in it.
+#
+# Both `mcp` imports in `mcp_packaging.transport` are FUNCTION-LOCAL on purpose:
+# `import mcp_packaging` and every pure module in it resolve with the SDK absent,
+# which is what makes the layer usable from a pure unit test and from a Nix
+# evaluation that has no Python environment.
+dependencies = [
+  "mcp>=1.27.1,<2.0"
+]
+description = "The shared packaging layer for the MCP server fleet: transport, bearer guard, startup probe, store modes, and the Nix factories that build and harden them"
+license = "MIT"
+name = "mcp-packaging"
+readme = "README.md"
+requires-python = ">=3.12"
+version = "0.1.0"
+
+# NO console script, and that is the boundary showing through: this distribution
+# installs a library and never a command. A packaging layer that installed an
+# entry point would be a server, and it would have to know what to serve.
+[project.urls]
+Homepage = "https://github.com/chess-seventh/mcp-packaging"
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "def __repr__",
+  "raise AssertionError",
+  "raise NotImplementedError",
+  "if __name__ == .__main__.:"
+]
+
+[tool.coverage.run]
+omit = ["tests/*"]
+source = ["mcp_packaging"]
+
+[tool.pytest.ini_options]
+addopts = "--strict-markers --tb=short"
+markers = [
+  "property: the claim is a universal invariant, not one example",
+  "real-io: exercises real filesystem I/O against a real directory",
+  "error: exercises an error, refusal or fault path",
+  "boundary: guards the ADR-002 boundary rule - this layer knows no domain",
+  "contract_shape_pure_function: contract shape - no observable mutation",
+  "contract_shape_bounded_change: contract shape - the mutation set is bounded",
+  "contract_shape_unbounded_preservation: contract shape - nothing changed"
+]
+python_classes = ["Test*"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+src = ["src", "tests"]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ty.environment]
+python = ".devenv/state/venv/bin/python"
+python-version = "3.12"
+
+[tool.ty.rules]
+possibly-missing-attribute = "error"
+possibly-missing-import = "error"
+redundant-cast = "warn"
+unused-ignore-comment = "warn"

@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+
+# Test and coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# devenv / direnv / nix
+.devenv/
+.devenv.flake.nix
+.direnv/
+result
+result-*
+
+# There is deliberately NO `.env` route in this repository and no dotenv in the
+# development shell. This layer holds no credential of its own: it is handed a
+# token by a consumer and compares it, and every secret in the tree is a
+# SYNTHETIC- prefixed fixture that exists to be searched for. An environment
+# file here would be a credential surface on the one component that must not
+# have one.
+.env
