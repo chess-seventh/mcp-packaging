@@ -2,6 +2,39 @@
   pkgs,
   ...
 }:
+let
+  # L235 - THE FLEET GATE, as four ordinary hooks of this repository's own
+  # (D-115).
+  #
+  # WHY THIS REPOSITORY NEEDS THEM. `hooks_everywhere.nix` installed the fleet
+  # gate on a global `core.hooksPath`, and prek REFUSES to install a
+  # repository's own hooks while one points outside the repository - it says so
+  # and names the fix. This repository was one of EIGHT that lost its gate to
+  # that: `devenv:git-hooks:install` failed, `enterShell` failed with it and
+  # `devenv test` returned 1, while `devenv shell -- cmd` still returned 0. Loud
+  # in the gate and silent interactively, which is why it went unnoticed.
+  #
+  # The global value is being removed rather than worked around per repository
+  # (Franci, 2026-08-26), and these entries are what replaces it: the gate is
+  # reached from inside this repository's own prek run instead of from a config
+  # value git obeys. Being one of prek's OWN hooks is the shape that stops
+  # fighting a provisioning manager that re-installs on entry - three earlier
+  # shapes moved `core.hooksPath` or wrapped prek's shims and each was killed by
+  # a reproduction.
+  #
+  # Built through writeShellApplication so the script is shellchecked at build
+  # time and the entries name a store path rather than a working-tree file.
+  fleetGateHook = "${
+    pkgs.writeShellApplication {
+      name = "fleet-gate-hook";
+      runtimeInputs = [
+        pkgs.coreutils
+        pkgs.git
+      ];
+      text = builtins.readFile ./hooks/fleet-gate-hook;
+    }
+  }/bin/fleet-gate-hook";
+in
 {
   # The development shell. It is NOT how anything here is deployed - this
   # repository ships a library and a set of Nix factories, and a consumer's own
@@ -51,6 +84,55 @@
   ];
 
   git-hooks.hooks = {
+    # L235 - the fleet gate, reached as four of this repo's own hooks. The
+    # rationale is in the `let` block at the top of this file; what matters here
+    # is that these four are ordinary entries with nothing special about them.
+    fleet-gate = {
+      enable = true;
+      name = "fleet gate";
+      stages = [ "pre-commit" ];
+      entry = "${fleetGateHook} pre-commit";
+      language = "system";
+      pass_filenames = false;
+      always_run = true;
+    };
+
+    # pass_filenames, because git hands commit-msg the message file and the
+    # fleet gate's gitlint and commitizen read it. Getting this wrong lints the
+    # wrong thing while still exiting 0.
+    fleet-gate-commit-msg = {
+      enable = true;
+      name = "fleet gate (message)";
+      stages = [ "commit-msg" ];
+      entry = "${fleetGateHook} commit-msg";
+      language = "system";
+      pass_filenames = true;
+      always_run = true;
+    };
+
+    fleet-gate-pre-push = {
+      enable = true;
+      name = "fleet gate (push)";
+      stages = [ "pre-push" ];
+      entry = "${fleetGateHook} pre-push";
+      language = "system";
+      pass_filenames = false;
+      always_run = true;
+    };
+
+    # The commit diary is hooks_everywhere.nix's post-commit hook - NOT
+    # pkgs/git-commit-gate, which ships pre-commit and commit-msg only. On a box
+    # with no fleet gate there is no diary, and the entry says so per commit.
+    fleet-gate-post-commit = {
+      enable = true;
+      name = "fleet gate (diary)";
+      stages = [ "post-commit" ];
+      entry = "${fleetGateHook} post-commit";
+      language = "system";
+      pass_filenames = false;
+      always_run = true;
+    };
+
     check-merge-conflicts = {
       name = "Check merge conflicts";
       enable = true;

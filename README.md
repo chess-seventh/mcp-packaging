@@ -226,6 +226,42 @@ keep the layer small:
   a security-relevant shared layer is real surface for a migration its own record
   calls cheap; an escape hatch on the hardening table has no consumer at all.
 
+## The commit gate
+
+`devenv` installs this repository's own git hooks, and four of them are the
+**fleet gate** — the checks every repository on the fleet shares (secret
+scanning, `gitlint`, `commitizen`). They are reached from inside this
+repository's own `prek` run rather than from a global git config value, which
+is what L235 changed: a global `core.hooksPath` made `prek` refuse to install
+this repository's hooks at all, so `devenv test` failed here and
+`devenv shell -- cmd` still returned 0.
+
+`hooks/fleet-gate-hook` is a tracked copy of the script the flake packages and
+tests. The flake is private, so taking it as an input would put a deploy-key
+wall in front of entering this shell on every box, CI included.
+
+On a box with no fleet gate installed it says so on every commit, and never
+blocks:
+
+```
+fleet gate: NOT INSTALLED on this box - pre-commit ran this repo's hooks only
+```
+
+To see what a commit would be refused for, without making one:
+
+```bash
+cfg=$(devenv build git-hooks.configFile | grep -o '/nix/store/[^"]*')
+devenv shell -- prek run --all-files -c "$cfg"
+```
+
+To skip a single fleet hook in this repository only — `--no-verify` turns the
+whole gate off, which is not the same thing:
+
+```bash
+git config hooks.fleetGate.skip <hook-id>
+git config --unset hooks.fleetGate.skip     # restore it
+```
+
 ## Licence
 
 MIT. See [LICENSE](LICENSE).
